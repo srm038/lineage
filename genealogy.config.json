@@ -22,31 +22,44 @@
       "shortname": {
         "$ref": "#/definitions/nonEmptyString"
       },
-      "birthdate": {
-        "$ref": "#/definitions/date"
-      },
-      "birthplace": {
-        "$ref": "#/definitions/nonEmptyString"
-      },
-      "deathdate": {
-        "$ref": "#/definitions/date"
-      },
-      "deathplace": {
-        "$ref": "#/definitions/nonEmptyString"
-      },
-      "marriagedate": {
+      "birth": {
         "type": "object",
-        "patternProperties": {
-          "[A-Za-z0-9]+": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
             "$ref": "#/definitions/date"
+          },
+          "place": {
+            "$ref": "#/definitions/nonEmptyString"
           }
         }
       },
-      "marriageplace": {
+      "death": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "$ref": "#/definitions/date"
+          },
+          "place": {
+            "$ref": "#/definitions/nonEmptyString"
+          }
+        }
+      },
+      "marriage": {
         "type": "object",
         "patternProperties": {
           "[A-Za-z0-9]+": {
-            "$ref": "#/definitions/nonEmptyString"
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "date": {
+                "$ref": "#/definitions/date"
+              },
+              "place": {
+                "$ref": "#/definitions/nonEmptyString"
+              }
+            }
           }
         }
       },
@@ -55,6 +68,7 @@
         "required": [
           "cemetery"
         ],
+        "additionalProperties": false,
         "properties": {
           "cemetery": {
             "$ref": "#/definitions/nonEmptyString"

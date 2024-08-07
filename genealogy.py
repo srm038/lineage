@@ -223,8 +223,8 @@ def childMarriage(c: str, mainLine: str, p0: str) -> str:
 
 
 def childBirth(c: str) -> str:
-    if people[c].get('birthdate'):
-        return f"born {people[c]['birthdate']}"
+    if people[c].get('birth', {}).get('date'):
+        return f"born {people[c].get('birth', {}).get('date')}"
     return ''
 
 
@@ -349,10 +349,8 @@ def combineVitals(birth: str, death: str, parents: str = '') -> str:
 def combineDatePlace(person: Dict, vital: str) -> str:
     if vital not in ['birth', 'death', 'marriage']:
         raise KeyError(f'{vital} is not a vital statistic')
-    vitalDateKey: str = f'{vital}date'
-    vitalPlaceKey: str = f'{vital}place'
-    vitalDate: str = person.get(vitalDateKey)
-    vitalPlace: str = person.get(vitalPlaceKey)
+    vitalDate: str = person.get(vital, {}).get('date')
+    vitalPlace: str = person.get(vital, {}).get('place')
     date: str = ''
     place: str = ''
     if vitalDate:
@@ -364,10 +362,8 @@ def combineDatePlace(person: Dict, vital: str) -> str:
 
 
 def combineMarriageDatePlace(person: Dict, s: str) -> str:
-    vitalDateKey: str = 'marriagedate'
-    vitalPlaceKey: str = f'marriageplace'
-    vitalDate = person.get(vitalDateKey, {}).get(s)
-    vitalPlace = person.get(vitalPlaceKey, {}).get(s)
+    vitalDate = person.get('marriage', {}).get(s, {}).get('date')
+    vitalPlace = person.get('marriage', {}).get(s, {}).get('place')
     date: str = ''
     place: str = ''
     if vitalDate:
@@ -484,24 +480,24 @@ def child_check(p):
 def getVitalYear(p: str, vital: str) -> Optional[int]:
     if vital not in ['birth', 'death']:
         raise KeyError(f"{vital} is not a vital statistic")
-    date: Union[int, str] = people.get(p, {}).get(f'{vital}date', 0)
+    date: Union[int, str] = people.get(p, {}).get(vital, {}).get('date', 0)
     if not date:
         return None
     if type(date) == int:
         return date
-    date = people[p][f'{vital}date'].split(' ')
+    date: list = date.split(' ')
     return int(date[-1])
 
 
 def getMarriageYear(person: Dict, s: str) -> int:
     if not s:
         return 0
-    date: Union[int, str] = person.get('marriagedate', {}).get(s, 0)
+    date: Union[int, str] = person.get('marriage', {}).get(s, {}).get('date', 0)
     if not date:
         return 0
     if type(date) == int:
         return date
-    date: list = person.get('marriagedate', {}).get(s, '').split(' ')
+    date: list = date.split(' ')
     return int(date[-1])
 
 
@@ -1195,7 +1191,7 @@ def drawLineChart(currentYear: int, done: dict, file: str, unknownb: set, unknow
             lines += f"<rect x='{(done[p]['d'] - 1) * w / widx:.3f}' y='{addPt(p, 'y', -5):.3f}' " \
                      f"width='{6 * w / widx:.3f}' height='{pt2px(10):.3f}' id='{p}-d'" \
                      f"class='unknownda' />"
-        for s in people[p].get('marriageplace', []):
+        for s in people[p].get('marriage', []):
             if not getMarriageYear(people[p], s):
                 continue
             flags += f"<image x='{getMarriageYear(people[p], s) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " \
@@ -1386,7 +1382,7 @@ def positionLine(descentList: list, numGenerations: int, size: float) -> int:
 
 
 def getApproxDeath(done: dict, p: str) -> int:
-    if people[p].get('deathdate'):
+    if people[p].get('death', {}).get('date'):
         return getVitalYear(p, 'death')
     allChildren = getAllChildren(p)
     lastChildBirth: int = max(list(filter(None, [getApproxBirth(done, c) for c in allChildren])) or [None])
@@ -1401,7 +1397,7 @@ def getApproxDeath(done: dict, p: str) -> int:
 
 
 def getApproxBirth(done: dict, p: str) -> int:
-    if people[p].get('birthdate'):
+    if people[p].get('birth', {}).get('date'):
         return getVitalYear(p, 'birth')
     allChildren = getAllChildren(p)
     firstChildBirth: Optional[int] = min(list(filter(None, [getApproxBirth(done, c) for c in allChildren])) or [None])
@@ -1426,14 +1422,14 @@ def getAllChildren(p: str) -> Set[str]:
 
 def birthdays(month, p0):
     for p in people:
-        if inFullTree(p, p0) and month in str(people[p]['birthdate']):
+        if inFullTree(p, p0) and month in str(people[p].get('birth', {}).get('date')):
             announce(p, p0)
             print(' ')
 
 
 def announce(p, p0):
     for d in descent(p, p0):
-        a = f"On {people[p]['birthdate']}, {people[p]['shortname']} was born"
+        a = f"On {people[p].get('birth', {}).get('date')}, {people[p]['shortname']} was born"
         if people[p]['birthplace']:
             a += f" in {people[p]['birthplace']}.{' ' + people[p]['history'] if people[p]['history'] else ''}\n"
         for n, i in enumerate(d[:-1]):
@@ -1476,18 +1472,18 @@ def getLivingAncestors(p: str) -> Set[str]:
 
 
 def getState(p: dict, time: str) -> Union[None, dict, str]:
-    if not people[p].get(f'{time}place'):
-        return None
     if time == 'marriage':
-        state = {m: people[p].get(f'{time}place', {m: ','})[m].split(',')[-1].strip() for m in
-                 people[p].get(f'{time}place', {'': ','})}
+        state = {m: people[p].get('marriage', {}).get(m, {}).get('place', ',').split(',')[-1].strip() for m in
+                 people[p].get('marriage', {'': ','})}
         return state
+    if not people[p].get(time, {}).get('place'):
+        return None
     state = people[p].get(f'{time}place', ',').split(',')
     return state[-1].strip()
 
 
 def ancestors_by_age():
-    byAge = [p for p in set.union(*generations) if people[p]['birthdate'] and people[p]['deathdate']]
+    byAge = [p for p in set.union(*generations) if people[p].get('birth', {}).get('date') and people[p]['deathdate']]
     for p in sorted(byAge, key=lambda p: getVitalYear(p, 'death') - getVitalYear(p, 'birth')):
         print(people[p]['shortname'], getVitalYear(p, 'death') - getVitalYear(p, 'birth'))
 
@@ -1739,3 +1735,34 @@ def begats(p: str, p0: str) -> str | list[str]:
                         i] += f', {people[person]["first"]} begat {people[d[j + 1]]["first"]} {people[d[j + 1]]["last"]}'
         begat[i] += '.'
     return begat
+
+
+# for row in rawData:
+#     if 'birthdate' in row:
+#         row.setdefault('birth', {})
+#         row['birth'].update({'date': row['birthdate']})
+#         del row['birthdate']
+#     if 'birthplace' in row:
+#         row.setdefault('birth', {})
+#         row['birth'].update({'place': row['birthplace']})
+#         del row['birthplace']
+#     if 'deathdate' in row:
+#         row.setdefault('death', {})
+#         row['death'].update({'date': row['deathdate']})
+#         del row['deathdate']
+#     if 'deathplace' in row:
+#         row.setdefault('death', {})
+#         row['death'].update({'place': row['deathplace']})
+#         del row['deathplace']
+#     if 'marriagedate' in row:
+#         row.setdefault('marriage', {})
+#         for s in row['marriagedate']:
+#             row['marriage'].setdefault(s, {})
+#             row['marriage'][s].update({'date': row['marriagedate'][s]})
+#         del row['marriagedate']
+#     if 'marriageplace' in row:
+#         row.setdefault('marriage', {})
+#         for s in row['marriageplace']:
+#             row['marriage'].setdefault(s, {})
+#             row['marriage'][s].update({'place': row['marriageplace'][s]})
+#         del row['marriageplace']
