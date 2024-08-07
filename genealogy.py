@@ -8,7 +8,7 @@ from typing import *
 import warnings
 
 people = dict()
-generations = list()
+generations: List[Set] = list()
 
 
 def isDateFull(d: Union[str, int]) -> bool:
@@ -99,7 +99,7 @@ def importFamily(familyName: str, p0: str):
 
 
 def inFullTree(p: str, p0: str) -> bool:
-    return p in getAncestors(p0)
+    return p in getAncestors(p0) or p == p0
 
 
 def getLineage(p: str, parent: str) -> str:
@@ -501,12 +501,12 @@ def generateTex(familyName: str, p0: str):
     print(f"{len(set.union(*generations))} total ancestors")
 
 
-def writeGenerations(f: TextIO, p0: str):
+def writeGenerations(f, p0: str):
     for g in generations:
-        writeGeneration(f, p0)
+        writeGeneration(f, p0, g)
 
 
-def writeGeneration(f: TextIO, p0: str):
+def writeGeneration(f, p0: str, g: Set):
     if p0 in g and people[p0]['gender'] == 'F':
         return
     f.write(f"\\generationgroup\n\n")
@@ -516,7 +516,7 @@ def writeGeneration(f: TextIO, p0: str):
         f.write(f"{printIndividualEntry(p, p0)}\n\n")
 
 
-def writeTitle(f: TextIO, familyName: str):
+def writeTitle(f, familyName: str):
     f.write(f"\\chapter*{{{familyName}}}\n\n")
 
 
