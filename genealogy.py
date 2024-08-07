@@ -116,12 +116,13 @@ def printIndividualEntry(p: str, p0: str) -> str:
     return buildParagraphs(
         buildParagraph(
             buildSentence(
-                f"\individual{ancestor}{{{p}}}{{{buildSentence(title, name)}}}{nameIndex}}}",
+                f"\individual{ancestor}{{{p}}}{{{buildSentence(title, name)}{nameIndex}}}",
                 accolades,
                 patriline,
                 vitals
             ),
-            *spouseDetails
+            *spouseDetails,
+            history
         ),
         childrenDetails,
         burialDetails,
@@ -143,7 +144,7 @@ def getSources(person: Dict) -> str:
 
 def getBurialDetails(person: Dict) -> str:
     if person.get('buried'):
-        return f"\\buried \\href{{{person.get('buriedlink')}}}{{{person.get('buried')}}}"
+        return f"\\buried \\href{{{person.get('buriedlink') or ''}}}{{{person.get('buried')}}}"
     return ''
 
 
@@ -174,7 +175,7 @@ def getChildDetails(person: Dict, c: str, p0: str) -> str:
     marriage = childMarriage(c, mainLine, p0)
     return f"\\childlist{mainLine}{{{c if mainLine else ''}}}" \
            f"{{{buildSentence(title, people[c]['shortname'])}}}" \
-           f"{{{joinComma(birth, marriage)}}}"
+           f"{{{buildParagraph(birth, marriage)}}}"
 
 
 def childMarriage(c: str, mainLine: str, p0: str) -> str:
@@ -261,6 +262,8 @@ def getSpouseName(s: str, p0: str) -> str:
     patriline = printLineage(s, 'father')
     shortName = people[s]['shortname']
     if inFullTree(s, p0):
+        if not people[s].get('father') and not people[s].get('mother'):
+            return buildSentence(f"\\textbf{{{shortName}}}", getNameIndex(people[s]))
         return buildSentence(getShortNamelinkBold(s, p0), patriline, getNameIndex(people[s]))
     return f"\\textbf{{{shortName}}}"
 
@@ -354,11 +357,11 @@ def getTitle(person: Dict) -> str:
     return person.get('title', '')
 
 
-def getNameIndex(person):
+def getNameIndex(person: Dict) -> str:
     firstName = person.get('first')
     middleName = person.get('middle')
     lastName = person.get('last')
-    nameIndex = f"\index{{{lastName}!{joinName(firstName, middleName)}}}"
+    nameIndex = f"\index{{{lastName or ''}!{joinName(firstName, middleName)}}}"
     return nameIndex
 
 
