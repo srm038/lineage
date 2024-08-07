@@ -894,7 +894,7 @@ def getLivingAncestors(p: str) -> Set[str]:
     year = datetime.date.today().year
     for a in getAncestors(p):
         b = getVitalYear(a, 'birth')
-        d = getVitalYear(a, 'birth')
+        d = getVitalYear(a, 'death')
         if not d and year - b < 100:
             d = year
         if b0 and d and d > b0:
