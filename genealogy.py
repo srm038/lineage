@@ -1,9 +1,9 @@
+import json
 import os
 import datetime
 import xlrd
 import csv
 import bs4
-import math
 from typing import *
 import warnings
 
@@ -19,82 +19,55 @@ def isDateFull(d: Union[str, int]) -> bool:
 
 def importFamily(familyName: str, p0: str):
     people.clear()
-    wb = xlrd.open_workbook(f"{familyName}.xlsx")
-    sh = wb.sheet_by_index(0)
-    with open(fr"{os.getcwd()}\{familyName}.txt", 'w') as f:
-        wr = csv.writer(f, quoting=csv.QUOTE_MINIMAL, delimiter='\t', lineterminator='\n')
-        for rownum in range(sh.nrows):
-            wr.writerow(sh.row_values(rownum))
-    with open(fr"{os.getcwd()}\{familyName}.txt", 'r') as f:
-        lines = f.readlines()
-        headers = lines[0].strip().split('\t')
-        for line in lines[1:]:
-            data = line.split('\t')
-            if data[0] in people:
-                print(f"{data[0]} duplication error")
+    with open(fr"{os.getcwd()}\{familyName}.json", 'r') as f:
+        rawData = json.load(f)
+    for p in rawData:
+        pid = p['id']
+        people.update({pid: {k: v for k, v in p.items() if k != 'id'}})
+        person = people[pid]
+        person['gender'] = person['gender'].upper()
+        for i in ['marriagedate', 'marriageplace', 'children']:
+            person.setdefault(i, dict())
+        for i in person['children']:
+            person['children'][i] = set(person['children'][i])
+        for i in ['child', 'sources']:
+            person.setdefault(i, set())
+            person[i] = set(person[i])
+        for i in ['first', 'middle', 'last']:
+            if i not in person:
                 continue
-            people.update({data[0]: dict(zip(headers[1:], data[1:]))})
-            for h in headers:
-                if h in people[data[0]]:
-                    people[data[0]][h] = people[data[0]][h].strip()
-            people[data[0]]['gender'] = people[data[0]]['gender'].upper()
-            while type(people[data[0]]['marriagedate']) == str:
-                people[data[0]]['marriagedate'] = eval(people[data[0]]['marriagedate']) if people[data[0]][
-                    'marriagedate'] else dict()
-            while type(people[data[0]]['marriageplace']) == str:
-                people[data[0]]['marriageplace'] = eval(people[data[0]]['marriageplace']) if people[data[0]][
-                    'marriageplace'] else dict()
-            while type(people[data[0]]['children']) == str:
-                people[data[0]]['children'] = eval(people[data[0]]['children']) if people[data[0]][
-                    'children'] else dict()
-            while type(people[data[0]]['child']) == str:
-                people[data[0]]['child'] = eval(people[data[0]]['child']) if people[data[0]]['child'] else set()
-            while type(people[data[0]]['sources']) == str:
-                people[data[0]]['sources'] = eval(people[data[0]]['sources']) if people[data[0]]['sources'] else set()
-            people[data[0]]['shortname'] = people[data[0]]['shortname'].replace(':', "\\\"")
-            people[data[0]]['shortname'] = people[data[0]]['shortname'].strip()
-            people[data[0]]['last'] = people[data[0]]['last'].replace(':', "\\\"")
-            for i in ['birthdate', 'birthplace', 'deathdate', 'deathplace', 'buried',
-                      'army', 'mason', 'history', 'pow']:
-                try:
-                    people[data[0]][i] = eval(people[data[0]][i]) if people[data[0]][i] else ''
-                except SyntaxError:
-                    pass
-                except NameError:
-                    pass
-                except KeyError:
-                    pass
-            if people[data[0]]['children']:
-                people[data[0]]['spouse'] = list(people[data[0]]['children'])
-            # print(data[0])
-            people[data[0]]['lost'] = bool(float(people[data[0]]['lost'] or 0))
-        for p in people:
-            if people[p]['gender'] == 'M':
-                for s in people[p].get('spouse', set()):
-                    if s in people:
-                        # people[s].setdefault('spouse', list()).extend([p])
-                        people[s]['spouse'] = p
-                        if s in people[p]['marriagedate']:
-                            people[s]['marriagedate'].update({p: people[p]['marriagedate'][s]})
-                        if s in people[p]['marriageplace']:
-                            people[s]['marriageplace'].update({p: people[p]['marriageplace'][s]})
-                for s in people[p].get('children', dict()):
-                    if not s or s not in people:
-                        continue
-                    for c in people[p].get('child', set()):
-                        if c in people[p]['children'][s]:
-                            people[s]['child'].add(c)
-        for p in people:
-            if people[p]['gender'] == 'M':
-                for s in people[p].get('children', dict()):
-                    for c in people[p]['children'][s]:
-                        if not c:
-                            continue
-                        people[c]['father'] = p
-                        people[c]['mother'] = s
-            if people[p]['gender'] == 'F':
+            person[i] = person[i].strip()
+            person[i] = person[i].replace(':', "\\\"")
+        if 'shortname' not in person:
+            person['shortname'] = joinName(person.get('first'), person.get('last'))
+        person['spouse'] = list(person.get('children', set()))
+    for p in people:
+        if people[p]['gender'] == 'M':
+            for s in people[p].get('spouse', set()):
+                if s in people:
+                    # people[s].setdefault('spouse', list()).extend([p])
+                    people[s]['spouse'] = p
+                    if s in people[p]['marriagedate']:
+                        people[s]['marriagedate'].update({p: people[p]['marriagedate'][s]})
+                    if s in people[p]['marriageplace']:
+                        people[s]['marriageplace'].update({p: people[p]['marriageplace'][s]})
+            for s in people[p].get('children', dict()):
+                if not s or s not in people:
+                    continue
                 for c in people[p].get('child', set()):
-                    people[c]['mother'] = p
+                    if c in people[p]['children'][s]:
+                        people[s]['child'].add(c)
+    for p in people:
+        if people[p]['gender'] == 'M':
+            for s in people[p].get('children', dict()):
+                for c in people[p]['children'][s]:
+                    if not c:
+                        continue
+                    people[c]['father'] = p
+                    people[c]['mother'] = s
+        if people[p]['gender'] == 'F':
+            for c in people[p].get('child', set()):
+                people[c]['mother'] = p
     updateGenerationGroups(p0)
 
 
@@ -157,10 +130,10 @@ def printIndividualEntry(p: str, p0: str) -> str:
 
 
 def getSources(person: Dict) -> str:
-    if not person['sources']:
+    if not person.get('sources'):
         return ''
-    allSources = person['sources']
-    for s in person['spouse']:
+    allSources = person.get('sources')
+    for s in person.get('spouse'):
         if not s:
             continue
         allSources |= people[s].get('sources', set())
@@ -169,20 +142,20 @@ def getSources(person: Dict) -> str:
 
 
 def getBurialDetails(person: Dict) -> str:
-    if person['buried']:
-        return f"\\buried \\href{{{person['buriedlink']}}}{{{person['buried']}}}"
+    if person.get('buried'):
+        return f"\\buried \\href{{{person.get('buriedlink')}}}{{{person.get('buried')}}}"
     return ''
 
 
 def getChildrenDetails(person: Dict, p0: str) -> str:
     childrens = []
-    for s in person['children']:
-        if not person['children'][s]:
+    for s in person.get('children'):
+        if not person.get('children')[s]:
             warnings.warn(f"{c} doesn't have an entry", Warning)
             continue
         parentDetails = getParentDetails(person, s) + '\n'
         children = []
-        for c in sorted(person['children'][s], key=lambda y: getVitalYear(y, 'birth')):
+        for c in sorted(person.get('children')[s], key=lambda y: getVitalYear(y, 'birth')):
             if c not in people:
                 warnings.warn(f"{c} doesn't have an entry", Warning)
                 continue
@@ -217,13 +190,13 @@ def childMarriage(c: str, mainLine: str, p0: str) -> str:
 
 
 def childBirth(c: str) -> str:
-    if people[c]['birthdate']:
+    if people[c].get('birthdate'):
         return f"born {people[c]['birthdate']}"
     return ''
 
 
 def getMainLine(person: Dict, c: str) -> str:
-    if c in person['child']:
+    if c in person.get('child', set()):
         return '[+]'
     return ''
 
@@ -237,7 +210,7 @@ def getParentDetails(person: Dict, s: str) -> str:
 
 
 def generateSpouse(person: Dict, p0: str):
-    spouse: list = person['spouse']
+    spouse: list = person.get('spouse', [])
     if type(spouse) == str:
         spouse: list = [spouse]
     spouseDetail = []
@@ -339,8 +312,8 @@ def combineDatePlace(person: Dict, vital: str) -> str:
         raise KeyError(f'{vital} is not a vital statistic')
     vitalDateKey: str = f'{vital}date'
     vitalPlaceKey: str = f'{vital}place'
-    vitalDate: str = person[vitalDateKey]
-    vitalPlace: str = person[vitalPlaceKey]
+    vitalDate: str = person.get(vitalDateKey)
+    vitalPlace: str = person.get(vitalPlaceKey)
     date: str = ''
     place: str = ''
     if vitalDate:
@@ -354,8 +327,8 @@ def combineDatePlace(person: Dict, vital: str) -> str:
 def combineMarriageDatePlace(person: Dict, s: str) -> str:
     vitalDateKey: str = 'marriagedate'
     vitalPlaceKey: str = f'marriageplace'
-    vitalDate = person[vitalDateKey].get(s)
-    vitalPlace = person[vitalPlaceKey].get(s)
+    vitalDate = person.get(vitalDateKey, {}).get(s)
+    vitalPlace = person.get(vitalPlaceKey, {}).get(s)
     date: str = ''
     place: str = ''
     if vitalDate:
@@ -382,17 +355,17 @@ def getTitle(person: Dict) -> str:
 
 
 def getNameIndex(person):
-    firstName = person['first']
-    middleName = person['middle']
-    lastName = person['last']
+    firstName = person.get('first')
+    middleName = person.get('middle')
+    lastName = person.get('last')
     nameIndex = f"\index{{{lastName}!{joinName(firstName, middleName)}}}"
     return nameIndex
 
 
 def getFullName(person: Dict) -> str:
-    firstName = person['first']
-    middleName = person['middle']
-    lastName = person['last']
+    firstName = person.get('first')
+    middleName = person.get('middle')
+    lastName = person.get('last')
     name = joinName(firstName, middleName, lastName)
     return name
 
@@ -403,7 +376,7 @@ def joinName(*name: iter) -> str:
 
 
 def getAncestorTag(person: Dict) -> str:
-    if not person['father']:
+    if not person.get('father'):
         return '[p]'
     return ''
 
@@ -520,7 +493,7 @@ def writeTitle(f, familyName: str):
     f.write(f"\\chapter*{{{familyName}}}\n\n")
 
 
-def follow(g=None, lost=False):
+def follow(p0: str, g=None, lost=False):
     i = 0
     for p in sorted(people, key=lambda p: getVitalYear(p, 'birth')):
         if lost and people[p]['lost']:
