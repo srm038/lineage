@@ -1,11 +1,8 @@
 import copy
 import json
+import math
 import os
 import datetime
-import random
-
-import xlrd
-import csv
 import bs4
 from typing import *
 import warnings
@@ -522,16 +519,16 @@ def follow(p0: str, g=None, lost=False):
         if g and people[p].get('generation') != g:
             continue
         if people[p]['gender'] == 'F' and people[p].get('spouse') and people[p].get('generation'):
-            if not people[p]['father']:
-                print(p, people[p]['spouse'], getVitalYear(p, 'birth'), people[p]['note'],
-                      people[people[p]['spouse']]['note'])
+            if not people[p].get('father'):
+                print(p, people[p]['spouse'], getVitalYear(p, 'birth'), people[p].get('note'),
+                      people[people[p]['spouse']].get('note'))
                 i += 1
-            elif not inFullTree(people[p]['father'], p0):
-                print(p, people[p]['spouse'], getVitalYear(p, 'birth'), people[p]['note'],
-                      people[people[p]['spouse']]['note'])
+            elif not inFullTree(people[p].get('father'), p0):
+                print(p, people[p]['spouse'], getVitalYear(p, 'birth'), people[p].get('note'),
+                      people[people[p]['spouse']].get('note'))
                 i += 1
-        if people[p]['gender'] == 'M' and people[p].get('generation') and not inFullTree(people[p]['father'], p0):
-            print(p, getVitalYear(p, 'birth'), people[p]['note'])
+        if people[p]['gender'] == 'M' and people[p].get('generation') and not inFullTree(people[p].get('father'), p0):
+            print(p, getVitalYear(p, 'birth'), people[p].get('note'))
             i += 1
     print(f"{i} threads to pull")
 
@@ -622,7 +619,7 @@ def generateHTree(file: str, p: str, size: int = 90):
     N = len(generations) // 2
     spacing: int = size + int(size / 6)
 
-    ancestors, descendants, initialPositions = getInitialPositions(size, N, p)
+    ancestors, descendants, initialPositions = getInitialPositionsH(size, N, p)
     compaction = [horizontalCompactionLTR, horizontalCompactionRTL, verticalCompactionTTB, verticalCompactionBTT]
     while True:
         oldPositions = copy.deepcopy(initialPositions)
@@ -759,7 +756,7 @@ def drawHTree(area, descendants, file, initialPositions, size, p0):
         f.write(svg.prettify())
 
 
-def getInitialPositions(s, N, p0) -> Tuple[Dict, Dict, Dict]:
+def getInitialPositionsH(s, N, p0) -> Tuple[Dict, Dict, Dict]:
     initialPositions = {}
     descendants = {}
     ancestors = {}
@@ -769,10 +766,10 @@ def getInitialPositions(s, N, p0) -> Tuple[Dict, Dict, Dict]:
         for c in list(current):
             personDescent = descent(c, p0)
             for d in personDescent:
-                x, y = position(d, N, s=s + 15)
+                x, y = positionH(d, N, s=s + 15)
                 key = '-'.join([c, str(int(c in done))])
                 initialPositions.update({key: (x, y)})
-                xc, yc = position(d[1:], N=N)
+                xc, yc = positionH(d[1:], N=N)
                 done.add(c)
                 keyc = [i for i in initialPositions if initialPositions[i] == (xc, yc)]
                 if not keyc:
@@ -789,7 +786,7 @@ def getInitialPositions(s, N, p0) -> Tuple[Dict, Dict, Dict]:
     return ancestors, descendants, initialPositions
 
 
-def position(d, N, s=90 + 15) -> Tuple[int, int]:
+def positionH(d, N, s=90 + 15) -> Tuple[int, int]:
     x, y = 0, 0
     if len(d) == 1:
         return x, y
@@ -1038,82 +1035,55 @@ def getYBars(ancestors: Dict, descendants: Dict, initialPositions: Dict) -> Dict
     return bars
 
 
-def line_chart(file, root):
-    currentYear = datetime.datetime.now().year + 10
-    current = {root}
-    done = dict()
+def generateLineTree(file, root):
+    currentYear: int = datetime.datetime.now().year + 10
+    current: Set[str] = {root}
+    done: Dict[str, Dict[str, int]] = dict()
     while current:
         for p in list(current):
             b = getVitalYear(p, 'birth')
             d = getVitalYear(p, 'death')
-            # y = 0 if p == root else 2 * (done[list(people[p]['child'])[0]]['y'] - (1 if people[p]['gender'] == 'F' else -1))
             y = 0
             done.update({p: {'b': b, 'd': d, 'y': y}})
-            if people[p]['father'] in people:
+            if people[p].get('father') in people:
                 current.add(people[p]['father'])
-            if people[p]['mother'] in people:
+            if people[p].get('mother') in people:
                 current.add(people[p]['mother'])
             current.discard(p)
 
-    unknownb = set()
-    unknownd = set()
+    unknownb: Set[str] = set()
+    unknownd: Set[str] = set()
     for p in done:
         if not getVitalYear(p, 'death'):
             if getVitalYear(p, 'birth') and currentYear - getVitalYear(p, 'birth') < 100:
                 done[p]['d'] = currentYear
                 continue
             unknownd.add(p)
-            done[p]['d'] = max(done[c]['b'] for c in people[p]['child'])
-            done[p]['d'] = max(done[p]['d'], max([getMarriageYear(p, s) for s in people[p]['marriagedate']] or [0]))
+            done[p]['d'] = getApproxDeath(done, p)
         if not getVitalYear(p, 'birth'):
             unknownb.add(p)
-            done[p]['b'] = min([
-                                   done.get(people[p].get('mother', ''), dict()).get('d', 3000) or 3000,
-                                   done.get(people[p].get('father', ''), dict()).get('d', 3000) or 3000,
-                                   min(done[c]['b'] for c in people[p]['child']) - 20
-                               ] + (
-                                   [getMarriageYear(p, s) or 3000 for s in people[p]['spouse'] if s in people] if
-                                   people[p]['gender'] == 'M' else
-                                   [getMarriageYear(p, people[p]['spouse']) or 3000]
-                               ))
+            done[p]['b'] = getApproxBirth(done, p)
 
-    N = len(generations)
-
-    def position(d, N=N, s=1):
-
-        y = 0
-        if len(d) == 1:
-            return 0
-        for i, j in enumerate(d[::-1][1:]):
-            yy = (1 if people[j]['gender'] == 'F' else -1) * s * 2 ** ((N - people[j]['generation']))
-            y += yy
-            # print(j, yy)
-        return y
-
+    numGenerations = len(generations)
+    ancestors, descendants, initialPositions = getInitialPositionsLine(10 * 72 / 96, numGenerations, root)
+    positions = verticalCompactionLineBTT(done, initialPositions, descendants, ancestors)
+    positions = verticalCompactionLineTTB(done, initialPositions, descendants, ancestors)
+    positions = verticalCompactionLineBTT(done, initialPositions, descendants, ancestors)
     for p in done:
-        done[p]['y'] = position(descent(p, root)[0], s=10 * 72 / 96)
+        done[p]['y'] = positions[p]
 
-    by_pos = sorted([p for p in done if 0 <= done[p]['y']], key=lambda p: done[p]['y'], reverse=False)
-    for i, p in enumerate(by_pos):
-        if i == 0:
-            continue
-        done[by_pos[i]]['y'] = done[by_pos[i - 1]]['y'] + 2 * 10 * 72 / 96
-    by_pos = sorted([p for p in done if done[p]['y'] <= 0], key=lambda p: done[p]['y'], reverse=True)
-    for i, p in enumerate(by_pos):
-        if i == 0:
-            continue
-        done[by_pos[i]]['y'] = done[by_pos[i - 1]]['y'] - 2 * 10 * 72 / 96
+    drawLineChart(currentYear, done, file, unknownb, unknownd)
 
+
+def drawLineChart(currentYear: int, done: dict, file: str, unknownb: set, unknownd: set):
     minx = min(done[p]['b'] for p in done) - 10
     maxx = currentYear
     widx = maxx - minx
     w = 18 * 96
     miny = min(done[p]['y'] for p in done) - 10
     maxy = max(done[p]['y'] for p in done) + 10
-
-    with open(f"{file}-lines.svg", 'r') as f:
+    with open(fr"{os.getcwd()}\{file}-lines.svg", 'r') as f:
         svg = bs4.BeautifulSoup(f, 'xml')
-
     lines = ''
     begats = ''
     names = ''
@@ -1134,24 +1104,24 @@ def line_chart(file, root):
         # lines += f"<path d='M {done[p]['b'] * w / widx},{done[p]['y']} H {done[p]['d'] * w / widx}' class='{'unknown' if p in unknown else 'known'}' id='{p}'/>"
         if p in unknownb and p not in unknownd:
             p_class = 'unknownb'
-            if get_state(p, 'death'):
+            if getState(p, 'death'):
                 flags += f"<image x='{(done[p]['d'] + 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " \
-                         f"height='9pt' href='flags/{get_state(p, 'death').lower()}.png'/>"
+                         f"height='9pt' href='flags/{getState(p, 'death').lower()}.png'/>"
         elif p not in unknownb and p in unknownd:
             p_class = 'unknownd'
-            if get_state(p, 'birth'):
+            if getState(p, 'birth'):
                 flags += f"<image x='{(done[p]['b'] - 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " \
-                         f"height='9pt' href='flags/{get_state(p, 'birth').lower()}.png' style='transform: translateX(-15.72pt)'/>"
+                         f"height='9pt' href='flags/{getState(p, 'birth').lower()}.png' style='transform: translateX(-15.72pt)'/>"
         elif p in unknownb and p in unknownd:
             p_class = 'unknownbd'
         else:
             p_class = 'known'
-            if get_state(p, 'death'):
+            if getState(p, 'death'):
                 flags += f"<image x='{(done[p]['d'] + 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " \
-                         f"height='9pt' href='flags/{get_state(p, 'death').lower()}.png'/>"
-            if get_state(p, 'birth'):
+                         f"height='9pt' href='flags/{getState(p, 'death').lower()}.png'/>"
+            if getState(p, 'birth'):
                 flags += f"<image x='{(done[p]['b'] - 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " \
-                         f"height='9pt' href='flags/{get_state(p, 'birth').lower()}.png' style='transform: translateX(-15.72pt)'/>"
+                         f"height='9pt' href='flags/{getState(p, 'birth').lower()}.png' style='transform: translateX(-15.72pt)'/>"
         lines += f"<rect x='{done[p]['b'] * w / widx:.3f}' y='{done[p]['y'] - 5 * 72 / 96:.3f}' " \
                  f"width='{(done[p]['d'] - done[p]['b']) * w / widx:.3f}' height='10pt' id='{p}'" \
                  f"class='{p_class}' />"
@@ -1164,20 +1134,17 @@ def line_chart(file, root):
                      f"width='{6 * w / widx:.3f}' height='10pt' id='{p}-d'" \
                      f"class='unknownda' />"
         for s in people[p].get('marriageplace', []):
-            if not getMarriageYear(p, s):
+            if not getMarriageYear(people[p], s):
                 continue
-            flags += f"<image x='{getMarriageYear(p, s) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " \
-                     f"height='9pt' href='flags/{get_state(p, 'marriage')[s].lower()}.png' style='transform: translateX(-7.36pt)'/>"
+            flags += f"<image x='{getMarriageYear(people[p], s) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " \
+                     f"height='9pt' href='flags/{getState(p, 'marriage')[s].lower()}.png' style='transform: translateX(-7.36pt)'/>"
     for p in done:
-        names += f"<text class='name {'nameunknown' if p in unknownb | unknownd else ''}'><tspan dy='2.5pt' x={done[p]['b'] * w / widx:.3f} y={done[p]['y']:.3f}>{people[p]['first']} {people[p]['last']}</tspan></text>"
-
-    for y in range(minx, maxx + 1):
+        names += f"<text class='name {'nameunknown' if p in unknownb | unknownd else ''}'><tspan dy='2.5pt' x={done[p]['b'] * w / widx:.3f} y={done[p]['y']:.3f}>{people[p]['first']} {people[p].get('last', '')}</tspan></text>"
+    for y in range(math.floor(minx), math.ceil(maxx) + 1):
         if not y % 100:
             years += f"<path d='M {y * w / widx:.0f},{maxy} V {miny}' class='year' id='{y}'/>"
-
     minx = min((done[p]['b'] - 10) * w / widx for p in done)
     maxx = currentYear * w / widx
-
     svg.find('svg').find('g').clear()
     svg.find('svg').find('g').contents = bs4.BeautifulSoup(years + begats + lines + flags + names,
                                                            'html.parser').contents
@@ -1194,8 +1161,229 @@ def line_chart(file, root):
                                ".name {dominant-baseline:middle; paint-order:stroke fill; font: bold 9pt Carlito; fill:black; stroke: white;stroke-width:2px} " \
                                ".nameunknown {fill:#333}" \
                                ".year {stroke-dasharray:5pt; stroke-width:2pt; stroke:#ccc}"
-    with open(f"{file}-lines.svg", 'w') as f:
+    with open(fr"{os.getcwd()}\{file}-lines.svg", 'w') as f:
         f.write(svg.prettify())
+
+
+def getInitialPositionsLine(size: float, numGenerations: int, p0: str) -> Tuple[Dict, Dict, Dict]:
+    initialPositions: Dict[str, int] = {}
+    descendants: Dict[str, str] = {}
+    ancestors: Dict[Any, Any] = {}
+    done: Set[str] = set()
+    current: Set[str] = {p0}
+    while current:
+        for c in list(current):
+            personDescent = descent(c, p0)[::-1]
+            for descentLine in personDescent:
+                y = positionLine(descentLine, numGenerations, size=size + 2)
+                key = c  # '-'.join([c, str(int(c in done))])
+                initialPositions.update({key: y})
+                yc = positionLine(descentLine[1:], numGenerations, size=size + 2)
+                done.add(c)
+                keyc = [i for i in initialPositions if initialPositions[i] == yc]
+                if not keyc:
+                    continue
+                keyc = keyc[0]
+                descendants.update({key: keyc})
+                ancestors.setdefault(keyc, set())
+                ancestors[keyc].add(key)
+            if people[c].get('father') in people:
+                current.add(people[c]['father'])
+            if people[c].get('mother') in people:
+                current.add(people[c]['mother'])
+            current.discard(c)
+    return ancestors, descendants, initialPositions
+
+
+def verticalCompactionLineBTT(done: dict, positions: Dict, descendants: Dict, ancestors: Dict,
+                              outerEdge: bool = False) -> Dict:
+    bars = getYBarsLine(done, ancestors, descendants, positions)
+    # Create visibility graph
+    spacing = 15 * 72 / 96 + 5
+    i = 0
+    for b in sorted(bars, key=lambda b: positions[bars[b][0]]):
+        visibility = getVisibilityLineBTT(done, bars, positions)
+        if b not in visibility:
+            c = sorted(bars, key=lambda b: positions[bars[b][0]])[0]
+            y = positions[bars[c][0]] - spacing
+            if not outerEdge:
+                continue
+        else:
+            c = visibility[b]
+            y = positions[bars[c][0]]
+        for node in bars[b]:
+            positions[node] = y + spacing
+        # if i == 1: break
+        # i += 1
+    return positions
+
+
+def getVisibilityLineBTT(done: dict, bars: dict, positions: dict) -> dict:
+    visibility: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    for b in sorted(bars, key=lambda b: positions[bars[b][0]], reverse=True):
+        y = b[0]
+        x1 = min([done[i]['b'] for i in bars[b]]) - 10
+        x2 = max([done[i]['d'] for i in bars[b]]) + 10
+        for c in sorted(bars, key=lambda b: positions[bars[b][0]], reverse=True):
+            if c[0] >= y:
+                continue
+            x3 = min([done[i]['b'] for i in bars[c]]) - 10
+            x4 = max([done[i]['d'] for i in bars[c]]) + 10
+            if x3 <= x1 <= x4 or x3 <= x2 <= x4:
+                visibility[b] = c
+                break
+            if x1 <= x3 <= x2 or x1 <= x4 <= x2:
+                visibility[b] = c
+                break
+    return visibility
+
+
+def verticalCompactionLineBTT(done: dict, positions: Dict, descendants: Dict, ancestors: Dict,
+                              outerEdge: bool = False) -> Dict:
+    bars = getYBarsLine(done, ancestors, descendants, positions)
+    # Create visibility graph
+    spacing = 15 * 72 / 96 + 5
+    i = 0
+    for b in sorted(bars, key=lambda b: positions[bars[b][0]]):
+        visibility = getVisibilityLineBTT(done, bars, positions)
+        if b not in visibility:
+            c = sorted(bars, key=lambda b: positions[bars[b][0]])[0]
+            y = positions[bars[c][0]] - spacing
+            if not outerEdge:
+                continue
+        else:
+            c = visibility[b]
+            y = positions[bars[c][0]]
+        for node in bars[b]:
+            positions[node] = y + spacing
+        # if i == 1: break
+        # i += 1
+    return positions
+
+
+def getVisibilityLineTTB(done: dict, bars: dict, positions: dict) -> dict:
+    visibility: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    for b in sorted(bars, key=lambda b: positions[bars[b][0]]):
+        y = b[0]
+        x1 = min([done[i]['b'] for i in bars[b]]) - 10
+        x2 = max([done[i]['d'] for i in bars[b]]) + 10
+        for c in sorted(bars, key=lambda b: positions[bars[b][0]]):
+            if c[0] <= y:
+                continue
+            x3 = min([done[i]['b'] for i in bars[c]]) - 10
+            x4 = max([done[i]['d'] for i in bars[c]]) + 10
+            if x3 <= x1 <= x4 or x3 <= x2 <= x4:
+                visibility[b] = c
+                break
+            if x1 <= x3 <= x2 or x1 <= x4 <= x2:
+                visibility[b] = c
+                break
+    return visibility
+
+
+def verticalCompactionLineTTB(done: dict, positions: Dict, descendants: Dict, ancestors: Dict,
+                              outerEdge: bool = False) -> Dict:
+    bars = getYBarsLine(done, ancestors, descendants, positions)
+    # Create visibility graph
+    spacing = 15 * 72 / 96 + 5
+    i = 0
+    for b in sorted(bars, key=lambda b: positions[bars[b][0]], reverse=True):
+        visibility = getVisibilityLineTTB(done, bars, positions)
+        if b not in visibility:
+            c = sorted(bars, key=lambda b: positions[bars[b][0]], reverse=True)[0]
+            y = positions[bars[c][0]] + spacing
+            if not outerEdge:
+                continue
+        else:
+            c = visibility[b]
+            y = positions[bars[c][0]]
+        for node in bars[b]:
+            positions[node] = y - spacing
+        # if i == 1: break
+        # i += 1
+    return positions
+
+
+def getVisibilityLineTTB(done: dict, bars: dict, positions: dict) -> dict:
+    visibility: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    for b in sorted(bars, key=lambda b: positions[bars[b][0]]):
+        y = b[0]
+        x1 = min([done[i]['b'] for i in bars[b]]) - 10
+        x2 = max([done[i]['d'] for i in bars[b]]) + 10
+        for c in sorted(bars, key=lambda b: positions[bars[b][0]]):
+            if c[0] <= y:
+                continue
+            x3 = min([done[i]['b'] for i in bars[c]]) - 10
+            x4 = max([done[i]['d'] for i in bars[c]]) + 10
+            if x3 <= x1 <= x4 or x3 <= x2 <= x4:
+                visibility[b] = c
+                break
+            if x1 <= x3 <= x2 or x1 <= x4 <= x2:
+                visibility[b] = c
+                break
+    return visibility
+
+
+def getYBarsLine(done: Dict, ancestors: Dict, descendants: Dict, initialPositions: Dict) -> Dict[
+    Tuple[int, int], List[str]]:
+    yPositions: Set[int] = {initialPositions[i] for i in initialPositions}
+    # Create axis dictionary
+    axis: Dict = {}
+    for y in sorted(yPositions):
+        nodes: Iterable = sorted({i for i in initialPositions if initialPositions[i] == y}, key=lambda n: done[n]['b'])
+        axis.update({y: list(nodes)})
+    # Create bar dictionary
+    bars: Dict[Tuple[int, int], List[str]] = {}
+    for y in axis:
+        barIndex = 0
+        checked = set()
+        bars.update({(y, barIndex): []})
+        for i, u in enumerate(axis[y]):
+            if u in checked:
+                continue
+            bars[(y, barIndex)].append(u)
+            if i + 1 == len(axis[y]):
+                break
+            v = axis[y][i + 1]
+            if not v == descendants.get(u) and v not in ancestors.get(u, set()):
+                barIndex += 1
+                bars.update({(y, barIndex): []})
+            checked.add(u)
+    return bars
+
+
+def positionLine(descentList: list, numGenerations: int, size: float) -> int:
+    y: int = 0
+    if len(descentList) == 1:
+        return 0
+    for i, j in enumerate(descentList[::-1][1:]):
+        yy = round((1 if people[j]['gender'] == 'F' else -1) * size * 2 ** (numGenerations - people[j]['generation']))
+        y += yy
+    return y
+
+
+def getApproxDeath(done, p):
+    lastChildBirth: int = max(done[c]['b'] for c in people[p]['child'] or [0])
+    if people[p]['gender'] == 'M':
+        spouses = people[p].get('spouse', [])
+        marriageDates: List[Optional[int]] = [getMarriageYear(people[p], s) for s in spouses]
+    else:
+        spouse = people[p].get('spouse')[0] if type(people[p].get('spouse')) == list else people[p].get('spouse')
+        marriageDates: List[Optional[int]] = [getMarriageYear(people[p], spouse)]
+    marriageDates: Optional[int] = min(list(filter(lambda x: x != 0, marriageDates)) or [0])
+    return max(filter(None, [lastChildBirth, marriageDates]))
+
+
+def getApproxBirth(done: dict, p: str) -> int:
+    fatherDeath: Optional[int] = done.get(people[p].get('mother'), dict()).get('d')
+    motherDeath: Optional[int] = done.get(people[p].get('father'), dict()).get('d')
+    firstChildBirth: int = min(done[c]['b'] for c in people[p]['child'] or [3000])
+    if people[p]['gender'] == 'M':
+        marriageDates: List[Optional[int]] = [getMarriageYear(people[p], s) for s in people[p].get('spouse', [])]
+    else:
+        marriageDates: List[Optional[int]] = [getMarriageYear(people[p], people[p].get('spouse'))]
+    marriageDates: Optional[int] = min(list(filter(lambda x: x != 0, marriageDates)) or [3000])
+    return min(filter(None, [fatherDeath, motherDeath, firstChildBirth - 20, marriageDates - 20]))
 
 
 def birthdays(month, p0):
@@ -1249,13 +1437,14 @@ def getLivingAncestors(p: str) -> Set[str]:
     return alive
 
 
-def get_state(p, time):
-    if not people[p][f'{time}place']:
+def getState(p: dict, time: str) -> str:
+    if not people[p].get(f'{time}place'):
         return None
     if time == 'marriage':
-        state = {m: people[p][f'{time}place'][m].split(',')[-1].strip() for m in people[p][f'{time}place']}
+        state = {m: people[p].get(f'{time}place', {m: ','})[m].split(',')[-1].strip() for m in
+                 people[p].get(f'{time}place', {'': ','})}
         return state
-    state = people[p][f'{time}place'].split(',')
+    state = people[p].get(f'{time}place', ',').split(',')
     return state[-1].strip()
 
 
