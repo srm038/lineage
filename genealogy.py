@@ -105,48 +105,24 @@ def in_full_tree(p):
     return False
 
 
-def patrilineage(p: str) -> str:
-    patriline = ''
-    father = getParent(p, 'father')
-    mother = getParent(p, 'mother')
-    if not father and not mother:
-        return patriline
-    if father not in people and mother not in people:
-        return patriline
-    while True:
-        if not father or father not in people:
-            father = mother
-        if not father or father not in people:
-            break
-        patriline += ', ' if patriline else ''
-        patriline += f"\\namelink{{{father}}}{{{people[father]['first']}}}"
-        father = getParent(father, 'father')
-        mother = getParent(father, 'mother')
-    return patriline
+def getLineage(p: str, parent: str) -> str:
+    if parent not in ['father', 'mother']:
+        raise KeyError(f'{parent} is not a proper parent')
+    p1 = getParent(p, parent)
+    p2 = getParent(p, {'father': 'mother'}.get(parent, 'father'))
+    if not p1 or p1 not in people:
+        return ''
+    parentLine = getLineage(p1, parent)
+    line: str = f"\\namelink{{{p1}}}{{{people[p1]['first']}}}"
+    line += ', ' if parentLine else ''
+    line += parentLine
+    return line
 
 
 def getParent(p: str, parent: str) -> Union[str, None]:
     if parent not in ['father', 'mother']:
         raise KeyError(f'{parent} is not a proper parent')
     return people.get(p, {}).get(parent)
-
-
-def matrilineage(p):
-    matriline = ''
-    father = people.get(p, dict()).get('father')
-    mother = people.get(p, dict()).get('mother')
-    if not father and not mother:
-        return matriline
-    if father not in people and mother not in people:
-        return matriline
-    while True:
-        if not mother or mother not in people:
-            break
-        matriline += ', ' if matriline else ''
-        matriline += f"\\namelink{{{mother}}}{{{people[mother]['first']}}}"
-        father = people.get(mother, dict()).get('father')
-        mother = people.get(mother, dict()).get('mother')
-    return matriline
 
 
 def individual(p):
@@ -157,7 +133,7 @@ def individual(p):
     name += f"\index{{{person['last']}!{person['first'] + (' ' if person['middle'] else '')}{person['middle']}}}"
     if person['title']:
         name = f"{person['title']} {name}"
-    patriline = patrilineage(p)
+    patriline = getLineage(p, 'father')
     if patriline:
         patriline = f" ({patriline})"
     birth, death, accolades, married, spousebirth, spousedeath, sources = '', '', '', '', '', '', ''
@@ -187,7 +163,7 @@ def individual(p):
         person['spouse'] = [person['spouse']]
     for s in sorted(person['spouse'], key=lambda x: get_marriage_year(p, x)):
         spousebirth, spousedeath = '', ''
-        spousepatriline = patrilineage(s)
+        spousepatriline = getLineage(s, 'father')
         if spousepatriline:
             spousepatriline = f" ({spousepatriline})"
         if s:
@@ -498,8 +474,9 @@ def generation_count(children=False):
     if children:
         for g in generations:
             N = len(set.union(*(
-            [set.union(*[people[p]['children'][s] for s in people[p]['children']] if people[p]['children'] else [set()])
-             for p in g])))
+                [set.union(
+                    *[people[p]['children'][s] for s in people[p]['children']] if people[p]['children'] else [set()])
+                 for p in g])))
             print(f"{generations.index(g) + 1}\t{N}\t{len(g)}")
     else:
         for g in generations:
