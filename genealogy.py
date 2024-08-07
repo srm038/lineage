@@ -17,15 +17,15 @@ def isDateFull(d: Union[str, int]) -> bool:
     return len(d) == 3
 
 
-def import_people(file):
+def importFamily(familyName: str, p0: str):
     people.clear()
-    wb = xlrd.open_workbook(f"{file}.xlsx")
+    wb = xlrd.open_workbook(f"{familyName}.xlsx")
     sh = wb.sheet_by_index(0)
-    with open(fr"{os.getcwd()}\{file}.txt", 'w') as f:
+    with open(fr"{os.getcwd()}\{familyName}.txt", 'w') as f:
         wr = csv.writer(f, quoting=csv.QUOTE_MINIMAL, delimiter='\t', lineterminator='\n')
         for rownum in range(sh.nrows):
             wr.writerow(sh.row_values(rownum))
-    with open(fr"{os.getcwd()}\{file}.txt", 'r') as f:
+    with open(fr"{os.getcwd()}\{familyName}.txt", 'r') as f:
         lines = f.readlines()
         headers = lines[0].strip().split('\t')
         for line in lines[1:]:
@@ -95,6 +95,7 @@ def import_people(file):
             if people[p]['gender'] == 'F':
                 for c in people[p].get('child', set()):
                     people[c]['mother'] = p
+    updateGenerationGroups(p0)
 
 
 def inFullTree(p: str, p0: str) -> bool:
@@ -488,27 +489,35 @@ def getMarriageYear(person: Dict, s: str) -> int:
     return int(date[-1])
 
 
-def export(file, p0):
-    import_people(file)
-    updateGenerationGroups(p0)
-    with open(fr"{os.getcwd()}\{file}_generated.tex", 'w') as f:
-        f.write(f"\\chapter*{{{file}}}\n\n")
-        for g in generations:
-            if p0 in g and people[p0]['gender'] == 'F':
-                continue
-            f.write(f"\\generationgroup\n\n")
-            for p in sorted(list(g), key=lambda y: getVitalYear(y, 'birth')):
-                if people[p]['gender'] == 'F' and 'spouse' in people[p] and people[p]['spouse'][0]:
-                    continue
-                try:
-                    f.write(f"{printIndividualEntry(p, p0)}\n\n")
-                except:
-                    print(f"{p} error")
+def generateTex(familyName: str, p0: str):
+    importFamily(familyName, p0)
+    with open(fr"{os.getcwd()}\{familyName}_generated.tex", 'w') as f:
+        writeTitle(f, familyName)
+        writeGenerations(f, p0)
     # h_tree(file, p0)
     # line_chart(file, p0)
     # follow(lost=True)
     # unsourced()
     print(f"{len(set.union(*generations))} total ancestors")
+
+
+def writeGenerations(f: TextIO, p0: str):
+    for g in generations:
+        writeGeneration(f, p0)
+
+
+def writeGeneration(f: TextIO, p0: str):
+    if p0 in g and people[p0]['gender'] == 'F':
+        return
+    f.write(f"\\generationgroup\n\n")
+    for p in sorted(list(g), key=lambda y: getVitalYear(y, 'birth')):
+        if people[p]['gender'] == 'F' and people[p].get('spouse', []):
+            continue
+        f.write(f"{printIndividualEntry(p, p0)}\n\n")
+
+
+def writeTitle(f: TextIO, familyName: str):
+    f.write(f"\\chapter*{{{familyName}}}\n\n")
 
 
 def follow(g=None, lost=False):
