@@ -175,7 +175,7 @@ def getSources(person: Dict) -> str:
 
 def getBurialDetails(person: Dict) -> str:
     if person.get('buried'):
-        return (f"\\buried \\href{{{'plus.codes/' + person.get('buried', {}).get('plusCode', '')}}}"
+        return (f"\\buried \\href{{{'http://plus.codes/' + person.get('buried', {}).get('plusCode', '')}}}"
                 f"{{{person.get('buried', {}).get('cemetery')}}}")
     return ''
 
@@ -424,6 +424,8 @@ def descent(p: str, p0: str) -> list:
     d = [[p]]
     while d[0][-1] != p0:
         children = list(people[d[0][-1]]['child'])
+        if not len(children):
+            print(people[d[0][-1]])
         if len(children) > 1:
             d.append(d[-1] + descent(children[1], p0)[0])
         d[0].append(children[0])
