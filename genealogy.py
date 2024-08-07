@@ -43,7 +43,11 @@ def importFamily(familyName: str, p0: str):
             person[i] = person[i].replace(':', "\\\"")
         if 'shortname' not in person:
             person['shortname'] = joinName(person.get('first'), person.get('last'))
-        person['spouse'] = list(person.get('children', set()))
+        for i in ['marriagedate', 'marriageplace', 'children']:
+            spouses = list(person.get(i, set()))
+            person.setdefault('spouse', [])
+            person['spouse'].extend(spouses)
+        person['spouse'] = list(set(person['spouse']))
     for p in people:
         if people[p]['gender'] == 'M':
             for s in people[p].get('spouse', set()):
@@ -1491,3 +1495,76 @@ def generateIDn(nameID: str) -> str:
         if (nameIDi := nameID + str(i) if i > 1 else nameID) not in people:
             return nameIDi
         i += 1
+
+
+def getSpouse(p: str) -> List[str]:
+    if len(people[p]['spouse']) == 0:
+        return ''
+    if type(people[p]['spouse']) == str:
+        return [people[p]['spouse']]
+    return people[p]['spouse']
+
+
+def getChildren(p: str, spouse: str):
+    children = list(people[p]['children'].get(spouse, set()) |
+                    people.get(spouse, dict()).get('children', dict()).get(p, set()))
+    children.sort(key=lambda c: (getVitalYear(c, 'birth') is None, getVitalYear(c, 'birth')))
+    return children
+
+
+def drawZegelchart(p: str):
+    currentYear: int = datetime.datetime.now().year
+    descendants = generateZegelchart(p)
+    toPt = lambda pt: pt / 0.75
+    width = lambda p: (d['d'] or 2023) - d['b']
+    y = lambda i: (2 * i) * toPt(10)
+    xMin = min(d['b'] for d in descendants if d['b']) - 10
+    xMax = currentYear + 10
+    xWidth = xMax - xMin
+    yMin = 0
+    yMax = len(descendants) * 2
+    with open(fr"{os.getcwd()}\{p}-zegelchart.svg", 'r') as f:
+        svg = bs4.BeautifulSoup(f, 'xml')
+    lives = ''
+    lines = ''
+    names = ''
+    done = set()
+    for i, d in enumerate(descendants):
+        if not d['b']: continue
+        lives += f"<rect id='{d['id']}' height='10pt' width='{width(d)}' x='{d['b']:.3f}' y='{y(i):.3f}' />"
+        for s in getSpouse(d['id']):
+            if s not in done:
+                sidx = next((j for j, e in enumerate(descendants) if e['id'] == s), None)
+                lines += f"<path id='{d['id']}-{s}' d='M {getMarriageYear(people[d['id']], s):.3f} {y(i) + toPt(5):.3f} V {y(sidx) + toPt(5):.3f}' />"
+        if next((j for j, e in enumerate(descendants) if e['id'] == getParent(d['id'], 'father')), None) is not None:
+            if marriageYear := getMarriageYear(people[getParent(d['id'], 'father')], getParent(d['id'], 'mother')):
+                lines += f"<path id='{d['id']}-parent' d='M {d['b']:.3f} {y(i) + toPt(5):.3f} H {marriageYear:.3f}' />"
+        names += f"<text x='{currentYear + toPt(2):.3f}' y='{y(i)+toPt(5):.3f}'>{people[d['id']]['shortname']}</text>"
+        done.add(d['id'])
+    svg.find('g', id="lives").contents = bs4.BeautifulSoup(lives, 'html.parser').contents
+    svg.find('g', id="lines").contents = bs4.BeautifulSoup(lines, 'html.parser').contents
+    svg.find('g', id="names").contents = bs4.BeautifulSoup(names, 'html.parser').contents
+    svg.find('svg').attrs.update(
+        {'viewBox': f"{xMin - 10:.3f} {yMin - 10:.3f} {xWidth + 20:.3f} {(yMax - yMin) * toPt(10) + 10:.3f}"})
+    with open(fr"{os.getcwd()}\{p}-zegelchart.svg", 'w') as f:
+        f.write(svg.prettify())
+
+
+def generateZegelchart(p: str) -> List[Dict[str, Union[int, str, None]]]:
+    def essentials(p: str):
+        return {'id': p,
+                'b': getVitalYear(p, 'birth') or getApproxBirth(dict(), p),
+                'd': getVitalYear(p, 'death')}
+
+    descent = [essentials(p)]
+    spouses = getSpouse(p)
+    for spouse in spouses:
+        if spouse:
+            if people[p]['gender'] == 'F':
+                descent.insert(-2, essentials(spouse))
+            else:
+                descent.append(essentials(spouse))
+        for child in getChildren(p, spouse):
+            childDescent = generateZegelchart(child)
+            descent[-1:-1] = childDescent
+    return descent
