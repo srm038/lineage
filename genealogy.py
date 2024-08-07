@@ -3,6 +3,7 @@ import json
 import math
 import os
 import datetime
+from typing import Dict, Any, List
 
 import bs4
 from typing import *
@@ -174,7 +175,8 @@ def getSources(person: Dict) -> str:
 
 def getBurialDetails(person: Dict) -> str:
     if person.get('buried'):
-        return f"\\buried \\href{{{person.get('buriedlink') or ''}}}{{{person.get('buried')}}}"
+        return (f"\\buried \\href{{{'plus.codes/' + person.get('buried', {}).get('plusCode', '')}}}"
+                f"{{{person.get('buried', {}).get('cemetery')}}}")
     return ''
 
 
@@ -245,11 +247,12 @@ def generateSpouse(person: Dict, p0: str):
     if type(spouse) == str:
         spouse: list = [spouse]
     spouseDetail = []
-    for s in sorted(spouse, key=lambda x: getMarriageYear(person, x)):
+    sortedSpouses = sorted(filter(lambda s: s != '', spouse), key=lambda x: getMarriageYear(person, x))
+    for s in sortedSpouses:
         if not s:
             continue
         spouseName = getSpouseName(s, p0)
-        nSpouse = getSpouseNumber(s, spouse)
+        nSpouse = getSpouseNumber(s, sortedSpouses)
         marriage = combineMarriageDatePlace(person, s)
         birth = combineDatePlace(people[s], 'birth')
         death = combineDatePlace(people[s], 'death')
@@ -270,9 +273,9 @@ def getSpouseParents(s: str, p0: str) -> str:
     spouseFatherName = ''
     spouseMotherName = ''
     if spouseFather in people:
-        spouseFatherName = getShortNamelink(spouseFather, p0)
+        spouseFatherName = getSpouseName(spouseFather, p0, includePatriline=False)
     if spouseMother in people:
-        spouseMotherName = getShortNamelink(spouseMother, p0)
+        spouseMotherName = getSpouseName(spouseMother, p0, includePatriline=False)
     return ' and '.join(filter(None, [spouseFatherName, spouseMotherName]))
 
 
@@ -288,13 +291,15 @@ def getShortNamelinkBold(p: str, p0: str) -> str:
     return f"{people[p]['shortname']}"
 
 
-def getSpouseName(s: str, p0: str) -> str:
+def getSpouseName(s: str, p0: str, includePatriline: bool = True) -> str:
     patriline = printLineage(s, 'father')
     shortName = people[s]['shortname']
     if inFullTree(s, p0):
         if not people[s].get('father') and not people[s].get('mother'):
             return f"\\textbf{{{shortName}}}{getNameIndex(people[s])}"
-        return buildSentence(getShortNamelinkBold(s, p0), patriline, getNameIndex(people[s]))
+        if includePatriline:
+            return buildSentence(getShortNamelinkBold(s, p0), f"{patriline}")
+        return f"{getShortNamelinkBold(s, p0)}"
     return f"\\textbf{{{shortName}}}"
 
 
@@ -314,7 +319,8 @@ def buildParagraphs(*paragraphs: iter) -> str:
 
 
 def buildParagraph(*sentences: iter) -> str:
-    return '. '.join(filter(None, sentences)) + '.'
+    paragraph = '. '.join(filter(None, sentences))
+    return paragraph + ('.' if not paragraph.endswith('quote}') else '')
 
 
 def buildSentence(*phrases: iter) -> str:
@@ -333,7 +339,7 @@ def combineVitals(birth: str, death: str, parents: str = '') -> str:
     if birth:
         birth = f"was born {birth}"
     if parents:
-        birth += f" to {parents}"
+        birth += f" to {parents}" if birth else f"was born to {parents}"
     if death:
         death = f"died {death}"
     vitals = '; '.join(filter(None, [birth, death]))
@@ -1076,8 +1082,8 @@ def getYBars(ancestors: Dict, descendants: Dict, initialPositions: Dict) -> Dict
     return bars
 
 
-def generateLineTree(file, root):
-    currentYear: int = datetime.datetime.now().year + 10
+def getApproxVitals(root):
+    currentYear: int = datetime.datetime.now().year
     current: Set[str] = {root}
     done: Dict[str, Dict[str, int]] = dict()
     while current:
@@ -1104,6 +1110,12 @@ def generateLineTree(file, root):
         if not getVitalYear(p, 'birth'):
             unknownb.add(p)
             done[p]['b'] = getApproxBirth(done, p)
+    return done
+
+
+def generateLineTree(file, root):
+    currentYear: int = datetime.datetime.now().year + 10
+    done = getApproxVitals(root)
 
     numGenerations = len(generations)
     ancestors, descendants, initialPositions = getInitialPositionsLine(pt2px(10), numGenerations, root)
@@ -1442,7 +1454,7 @@ def announce(p, p0):
                 a += f"{people[i]['shortname']} begat {people[d[n + 1]]['shortname']}.\n"
         a += f"{people[p]['first']} was my {'great-' * (len(d) - 2)}grand{'father' if people[p]['gender'] == 'M' else 'mother'}."
         if people[p]['buried']:
-            a += f"\n{'He' if people[p]['gender'] == 'M' else 'She'} is buried in {people[p]['buried']}."
+            a += f"\n{'He' if people[p]['gender'] == 'M' else 'She'} is buried in {people[p]['buried']['cemetery']}."
         print(a)
 
 
@@ -1514,10 +1526,12 @@ def getChildren(p: str, spouse: str):
     return children
 
 
+toPt = lambda pt: pt / 0.75
+
+
 def drawZegelchart(p: str):
     currentYear: int = datetime.datetime.now().year
     descendants = generateZegelchart(p)
-    toPt = lambda pt: pt / 0.75
     width = lambda p: (d['d'] or 2023) - d['b']
     y = lambda i: (2 * i) * toPt(10)
     xMin = min(d['b'] for d in descendants if d['b']) - 10
@@ -1573,16 +1587,16 @@ def generateZegelchart(p: str) -> List[Dict[str, Union[int, str, None]]]:
 
 
 def dms(old):
-    direction = {'N':1, 'S':-1, 'E': 1, 'W':-1}
-    new = old.replace(u'°',' ').replace('\'',' ').replace('"',' ')
+    direction = {'N': 1, 'S': -1, 'E': 1, 'W': -1}
+    new = old.replace(u'°', ' ').replace('\'', ' ').replace('"', ' ')
     new = new.split()
     new_dir = new.pop()
-    new.extend([0,0,0])
-    return (int(new[0])+int(new[1])/60.0+int(new[2])/3600.0) * direction[new_dir]
+    new.extend([0, 0, 0])
+    return (int(new[0]) + int(new[1]) / 60.0 + int(new[2]) / 3600.0) * direction[new_dir]
 
 
 def getCoordinates(link):
-    coords  = pluscodes.decode(link).center()
+    coords = pluscodes.decode(link).center()
     return f'{coords.lat},{coords.lon}'
 
 
@@ -1590,3 +1604,122 @@ def printGraves():
     for p in people:
         if 'buriedlink' in people[p]:
             print(f'{getFullName(people[p])},"{getCoordinates(people[p]["buriedlink"])}"')
+
+
+phi = lambda a, b: a + b / 2
+
+
+def getRadialChartLayout(root: str):
+    approxVitals = getApproxVitals(root)
+    radialChart: dict[str, dict[str, list[str] | int | float] | dict[str, list[str] | int | float]] = {
+        root: {'r1': approxVitals[root]['d'] - approxVitals[root]['d'],
+               'r2': approxVitals[root]['d'] - approxVitals[root]['b'],
+               'a': 0, 'b': 180,
+               'p': list(filter(None, [getParent(root, 'father'), getParent(root, 'mother')]))}}
+    radialChart[root].update({'phi': phi(radialChart[root]['a'], radialChart[root]['b'])})
+    lenRadialChart = 0
+    while lenRadialChart < len(radialChart):
+        lenRadialChart = len(radialChart)
+        for r in list(radialChart):
+            d = radialChart[r]['b'] / 2
+            radialChart[r].update({'d': d})
+            for p in radialChart[r]['p']:
+                if p not in radialChart:
+                    radialChart.update({p: {
+                        'r1': approxVitals[root]['d'] - approxVitals[p]['d'],
+                        'r2': approxVitals[root]['d'] - approxVitals[p]['b'],
+                        'a': radialChart[r]['a'] + (1 if people[p]['gender'] == 'M' else 0) * d, 'b': d,
+                        'p': list(filter(None, [getParent(p, 'father'), getParent(p, 'mother')]))
+                    }})
+                    radialChart[p].update({'phi': phi(radialChart[p]['a'], radialChart[p]['b'])})
+    return radialChart
+
+
+def pol2xy(r, phi) -> Tuple[float, float]:
+    return r * math.cos(math.radians(phi)), r * math.sin(math.radians(phi))
+
+
+def dist(r1, phi1, r2, phi2) -> float:
+    c1 = pol2xy(r1, phi1)
+    c2 = pol2xy(r2, phi2)
+    x = c2[0] - c1[0]
+    y = c2[1] - c1[1]
+    return math.hypot(x, y)
+
+
+def bearing(r1, phi1, r2, phi2) -> float:
+    x1, y1 = pol2xy(r1, phi1)
+    x2, y2 = pol2xy(r2, phi2)
+    return (math.degrees(math.atan2(
+        y2 - y1,
+        x2 - x1
+    )) + 360) % 360
+
+
+def forceDirectRadialChart(radialChart, ks=1, kr=1):
+    initialR = {}
+    for m in radialChart:
+        for p in radialChart[m]['p']:
+            r0 = 2 * radialChart[m]['r2'] * math.sin(
+                math.radians(abs(radialChart[m]['phi'] - radialChart[p]['phi']) / 2))
+            initialR.setdefault(m, dict())
+            initialR[m].update({p: r0})
+    vector = {}
+    for m in radialChart:
+        vector.setdefault(m, [])
+        # repulsive forces
+        for n in radialChart:
+            if m == n:
+                continue
+            r = dist(radialChart[m]['r2'], radialChart[m]['phi'], radialChart[n]['r2'], radialChart[n]['phi'])
+            b = bearing(radialChart[m]['r2'], radialChart[m]['phi'], radialChart[n]['r2'], radialChart[n]['phi'])
+            vector[m] += [(-kr / r ** 2, b)]
+        # attractive forces
+        for p in radialChart[m]['p']:
+            r0 = initialR[m][p]
+            r = dist(radialChart[m]['r2'], radialChart[m]['phi'], radialChart[m]['r2'], radialChart[p]['phi'])
+            b = bearing(radialChart[m]['r2'], radialChart[m]['phi'], radialChart[m]['r2'], radialChart[p]['phi'])
+            vector[m] += [(ks * (r - r0), b)]
+            vector.setdefault(p, [])
+            vector[p] += [(ks * (r - r0), (b + 180) % 360)]
+    for m in radialChart:
+        x, y = pol2xy(radialChart[m]['r2'], radialChart[m]['phi'])
+        x += sum([pol2xy(*f)[0] for f in vector[m]])
+        y += sum([pol2xy(*f)[1] for f in vector[m]])
+        radialChart[m]['phi'] = math.degrees(math.atan2(y, x))
+    return radialChart
+
+
+def distributeRadialChart(radialChart):
+    sortedRadialChart = sorted(radialChart.keys(), key=lambda r: radialChart[r]['phi'])
+    d = len(sortedRadialChart)
+    for i, r in enumerate(sortedRadialChart):
+        radialChart[r]['phi'] = 180 * i / (d - 1)
+    return radialChart
+
+
+def drawRadialChart(file, radialChart):
+    with open(f"{file}-radial.svg", 'r') as f:
+        svg = bs4.BeautifulSoup(f, 'xml')
+    paths = ''
+    xMin, xMax, yMin, yMax = 0, 0, 0, 0
+    for r in radialChart:
+        paths += f'<path id="{r}" class="life {people[r]["gender"]}" d="M {radialChart[r]["r1"]} 0 H {radialChart[r]["r2"]}" transform="rotate({-radialChart[r]["phi"]} 0 0)" />'
+        x, y = radialChart[r]['r2'] * math.cos(math.radians(radialChart[r]["phi"])), radialChart[r]['r2'] * math.sin(
+            math.radians(radialChart[r]["phi"]))
+        xMin = min(xMin, x)
+        xMax = max(xMax, x)
+        yMin = min(yMin, -y)
+        yMax = max(yMax, -y)
+        for p in radialChart[r]['p']:
+            x1, y1 = pol2xy(radialChart[r]['r2'], -radialChart[r]['phi'])
+            x2, y2 = pol2xy(radialChart[r]['r2'], -radialChart[p]['phi'])
+            paths += f'<path id="{r}-{p}" class="parents" d="M {x1:.5f} {y1:.5f} A {radialChart[r]["r2"]} {radialChart[r]["r2"]} 0 0 {int(radialChart[r]["phi"] > radialChart[p]["phi"])} {x2:.5f} {y2:.5f}" />'
+    svg.find('g', id="radial").contents = bs4.BeautifulSoup(paths, 'html.parser').contents
+    svg.find('svg').attrs.update(
+        {'viewBox': f"{xMin - 10:.3f} {yMin - 10:.3f} {xMax - xMin + 20:.3f} {0 - yMin + 20:.3f}",
+         'width': f"{xMax - xMin + 20:.3f}", 'height': f"{0 - yMin + 20:.3f}"})
+    with open(fr"{os.getcwd()}\{file}-radial.svg", 'w') as f:
+        f.write(svg.prettify())
+
+
