@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Genealogy",
+  "description": "Contains individual family members",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "first": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "middle": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "last": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "shortname": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "birthdate": {
+        "$ref": "#/definitions/date"
+      },
+      "birthplace": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "deathdate": {
+        "$ref": "#/definitions/date"
+      },
+      "deathplace": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "marriagedate": {
+        "type": "object",
+        "patternProperties": {
+          "[A-Za-z0-9]+": {
+            "$ref": "#/definitions/date"
+          }
+        }
+      },
+      "marriageplace": {
+        "type": "object",
+        "patternProperties": {
+          "[A-Za-z0-9]+": {
+            "$ref": "#/definitions/nonEmptyString"
+          }
+        }
+      },
+      "buriedlink": {
+        "type": "string",
+        "format": "uri"
+      },
+      "buried": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "father": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "mother": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "children": {
+        "oneOf": [
+          {
+            "type": "object",
+            "patternProperties": {
+              "[A-Za-z]+": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/nonEmptyString"
+                },
+                "uniqueItems": true
+              }
+            }
+          },
+          {
+            "$ref": "#/definitions/nonEmptyString"
+          }
+        ]
+      },
+      "child": {
+        "oneOf": [
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/nonEmptyString"
+            },
+            "uniqueItems": true
+          },
+          {
+            "$ref": "#/definitions/nonEmptyString"
+          }
+        ]
+      },
+      "history": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "tree": {
+        "type": "boolean"
+      },
+      "gender": {
+        "type": "string",
+        "enum": [
+          "M",
+          "F",
+          "m",
+          "f"
+        ]
+      },
+      "note": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "sources": {
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "uniqueItems": true
+      },
+      "army": {
+        "type": "boolean"
+      },
+      "mason": {
+        "type": "boolean"
+      },
+      "title": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "lost": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "id",
+      "first"
+    ],
+    "dependentRequired": {
+      "buriedLink": [
+        "buried"
+      ]
+    },
+    "uniqueItems": true
+  },
+  "definitions": {
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "date": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": "[A-Za-z]+( [0-9]{1,2})?, [0-9]{4}"
+        },
+        {
+          "type": "number",
+          "minimum": 1000
+        }
+      ]
+    }
+  }
+}
