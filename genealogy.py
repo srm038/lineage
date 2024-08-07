@@ -97,14 +97,8 @@ def import_people(file):
                     people[c]['mother'] = p
 
 
-def inFullTree(p):
-    for g in generations:
-        if p in people and people[p]['gender'] == 'F':
-            if not people[p]['father'] and not people[p]['mother']:
-                return False
-        if p in g:
-            return True
-    return False
+def inFullTree(p: str, p0: str) -> bool:
+    return p in getAncestors(p0)
 
 
 def getLineage(p: str, parent: str) -> str:
@@ -127,7 +121,7 @@ def getParent(p: str, parent: str) -> Union[str, None]:
     return people.get(p, {}).get(parent)
 
 
-def individual(p: str):
+def individual(p: str, p0: str) -> str:
     # child_check(p)
     person = people[p]
     ancestor = getAncestorTag(person)
@@ -139,9 +133,9 @@ def individual(p: str):
     death = combineDatePlace(person, 'death')
     vitals = combineVitals(birth, death)
     accolades = getAccolades(person)
-    spouseDetails = generateSpouse(person)
+    spouseDetails = generateSpouse(person, p0)
     history = person.get('history', '')
-    childrenDetails = getChildrenDetails(person)
+    childrenDetails = getChildrenDetails(person, p0)
     burialDetails = getBurialDetails(person)
     sources = getSources(person)
 
@@ -179,7 +173,7 @@ def getBurialDetails(person: Dict) -> str:
     return ''
 
 
-def getChildrenDetails(person: Dict) -> str:
+def getChildrenDetails(person: Dict, p0: str) -> str:
     childrens = []
     for s in person['children']:
         if not person['children'][s]:
@@ -191,7 +185,7 @@ def getChildrenDetails(person: Dict) -> str:
             if c not in people:
                 warnings.warn(f"{c} doesn't have an entry", Warning)
                 continue
-            childDetail = getChildDetails(person, c)
+            childDetail = getChildDetails(person, c, p0)
             children += [childDetail]
         if children:
             children.insert(0, parentDetails)
@@ -199,17 +193,17 @@ def getChildrenDetails(person: Dict) -> str:
     return '\n'.join(childrens)
 
 
-def getChildDetails(person: Dict, c: str) -> str:
+def getChildDetails(person: Dict, c: str, p0: str) -> str:
     mainLine = getMainLine(person, c)
     title = getTitle(people[c])
     birth = childBirth(c)
-    marriage = childMarriage(c, mainLine)
+    marriage = childMarriage(c, mainLine, p0)
     return f"\\childlist{mainLine}{{{c if mainLine else ''}}}" \
            f"{{{title}{people[c]['shortname']}}}" \
            f"{{{joinComma(birth, marriage)}}}"
 
 
-def childMarriage(c: str, mainLine: str) -> str:
+def childMarriage(c: str, mainLine: str, p0: str) -> str:
     if people[c]['gender'] == 'M' or not mainLine:
         return ''
     spouses = people[c].get('spouse', '')
@@ -218,7 +212,7 @@ def childMarriage(c: str, mainLine: str) -> str:
     for cs in spouses:
         if not people.get(cs, dict()).get('generation'):
             continue
-        return f"{getPronoun(people[c])} married {getShortNamelink(cs)}"
+        return f"{getPronoun(people[c])} married {getShortNamelink(cs, p0)}"
 
 
 def childBirth(c: str) -> str:
@@ -241,7 +235,7 @@ def getParentDetails(person: Dict, s: str) -> str:
     return f"{person['shortname']} and {people[s]['shortname']}\\children"
 
 
-def generateSpouse(person: Dict):
+def generateSpouse(person: Dict, p0: str):
     spouse: list = person['spouse']
     if type(spouse) == str:
         spouse: list = [spouse]
@@ -249,12 +243,12 @@ def generateSpouse(person: Dict):
     for s in sorted(spouse, key=lambda x: getMarriageYear(person, x)):
         if not s:
             continue
-        spouseName = getSpouseName(s)
+        spouseName = getSpouseName(s, p0)
         nSpouse = getSpouseNumber(s, spouse)
         marriage = combineMarriageDatePlace(person, s)
         birth = combineDatePlace(people[s], 'birth')
         death = combineDatePlace(people[s], 'death')
-        vitals = combineVitals(birth, death, parents=getSpouseParents(s))
+        vitals = combineVitals(birth, death, parents=getSpouseParents(s, p0))
         history = people[s].get('history')
 
         spouseDetail += [
@@ -265,35 +259,35 @@ def generateSpouse(person: Dict):
     return spouseDetail
 
 
-def getSpouseParents(s: str) -> str:
+def getSpouseParents(s: str, p0: str) -> str:
     spouseFather = people[s].get('father')
     spouseMother = people[s].get('mother')
     spouseFatherName = ''
     spouseMotherName = ''
     if spouseFather in people:
-        spouseFatherName = getShortNamelink(spouseFather)
+        spouseFatherName = getShortNamelink(spouseFather, p0)
     if spouseMother in people:
-        spouseMotherName = getShortNamelink(spouseMother)
+        spouseMotherName = getShortNamelink(spouseMother, p0)
     return ' and '.join(filter(None, [spouseFatherName, spouseMotherName]))
 
 
-def getShortNamelink(p: str) -> str:
-    if inFullTree(p):
+def getShortNamelink(p: str, p0: str) -> str:
+    if inFullTree(p, p0):
         return f"\\namelink{{{p}}}{{{people[p]['shortname']}}}"
     return f"{people[p]['shortname']}"
 
 
-def getShortNamelinkBold(p: str) -> str:
-    if inFullTree(p):
+def getShortNamelinkBold(p: str, p0: str) -> str:
+    if inFullTree(p, p0):
         return f"\\namelinkbold{{{p}}}{{{people[p]['shortname']}}}"
     return f"{people[p]['shortname']}"
 
 
-def getSpouseName(s: str) -> str:
+def getSpouseName(s: str, p0: str) -> str:
     patriline = printLineage(s, 'father')
     shortName = people[s]['shortname']
-    if inFullTree(s):
-        return buildSentence(getShortNamelinkBold(s), patriline, getNameIndex(people[s]))
+    if inFullTree(s, p0):
+        return buildSentence(getShortNamelinkBold(s, p0), patriline, getNameIndex(people[s]))
     return f"\\textbf{{{shortName}}}"
 
 
@@ -413,42 +407,43 @@ def getAncestorTag(person: Dict) -> str:
     return ''
 
 
-def descent(p, p0):
+def descent(p: str, p0: str) -> list:
     d = [[p]]
     while d[0][-1] != p0:
         children = list(people[d[0][-1]]['child'])
         if len(children) > 1:
-            # print(children)
             d.append(d[-1] + descent(children[1], p0)[0])
         d[0].append(children[0])
-        # print(d)
 
-    def men(m):
-        i = 0 if people[m[0]]['gender'] == 'M' else 1
-        c = 0
-        for j in m[i:]:
-            if people[j]['gender'] == 'M':
-                c += 1
-            else:
-                break
-        return c
-
-    return sorted(d, key=lambda m: men(m[::-1]), reverse=True)
+    return sorted(d, key=lambda m: lenSpearLine(m[::-1]), reverse=True)
 
 
-def generation_groups(p0):
+def lenSpearLine(m: list) -> int:
+    i = int(people[m[0]]['gender'] == 'M')
+    c = 0
+    for j in m[i:]:
+        c += int(people[j]['gender'] == 'M')
+    return c
+
+
+def updateGenerationGroups(p0):
     generations.clear()
-    for p in people:
-        try:
-            people[p]['generation'] = max(len(d) - 1 for d in descent(p, p0))
-        except:
-            pass
-    max_g = max(people[p].get('generation', 0) for p in people)
-    for g in range(max_g + 1):
-        generations.insert(0, {p for p in people if 'generation' in people[p] and people[p]['generation'] == g})
+    setGenerations(p0)
+    maxG = max(people[p].get('generation', 0) for p in people)
+    for g in range(maxG + 1):
+        generations.insert(0, set(filter(lambda p: isInGeneration(g, p), people)))
 
 
-def ancestors(p):
+def setGenerations(p0):
+    for p in filter(lambda p: inFullTree(p, p0), people):
+        people[p]['generation'] = max(len(d) - 1 for d in descent(p, p0))
+
+
+def isInGeneration(g: int, p: str) -> bool:
+    return 'generation' in people[p] and people[p]['generation'] == g
+
+
+def getAncestors(p):
     ancestors = {p}
     i = 0
     while i != len(ancestors):
@@ -467,33 +462,6 @@ def child_check(p):
         for c in people[p]['children'][s]:
             if people.get(c, dict()).get('generation', 100) >= people[p].get('generation', 0):
                 print(f'generation issue: {p} and {c}')
-
-
-def generation_groups_old(p0):
-    # TODO multiple lines of descent
-    generations.clear()
-    generations.append({p0})
-    done = set({p0})
-    to_search = set([people[p0]['father'], people[p0]['mother']])
-    while to_search:
-        generations.insert(0, set())
-        for p in list(to_search):
-            if p in done:
-                to_search.remove(p)
-                continue
-            # if any(s and s in people[p].get('spouse') for s in done):
-            #     continue
-            if p and inFullTree(p):
-                generations[0].add(p)
-                to_search |= set([people[p]['father'], people[p]['mother']])
-                to_search.remove(p)
-                done.add(p)
-            else:
-                to_search.remove(p)
-                done.add(p)
-        print(to_search, generations)
-    if not generations[0]:
-        del generations[0]
 
 
 def getVitalYear(p: str, vital: str) -> int:
@@ -522,7 +490,7 @@ def getMarriageYear(person: Dict, s: str) -> int:
 
 def export(file, p0):
     import_people(file)
-    generation_groups(p0)
+    updateGenerationGroups(p0)
     with open(fr"{os.getcwd()}\{file}_generated.tex", 'w') as f:
         f.write(f"\\chapter*{{{file}}}\n\n")
         for g in generations:
@@ -533,7 +501,7 @@ def export(file, p0):
                 if people[p]['gender'] == 'F' and 'spouse' in people[p] and people[p]['spouse'][0]:
                     continue
                 try:
-                    f.write(f"{individual(p)}\n\n")
+                    f.write(f"{individual(p, p0)}\n\n")
                 except:
                     print(f"{p} error")
     # h_tree(file, p0)
@@ -555,11 +523,11 @@ def follow(g=None, lost=False):
                 print(p, people[p]['spouse'], getVitalYear(p, 'birth'), people[p]['note'],
                       people[people[p]['spouse']]['note'])
                 i += 1
-            elif not inFullTree(people[p]['father']):
+            elif not inFullTree(people[p]['father'], p0):
                 print(p, people[p]['spouse'], getVitalYear(p, 'birth'), people[p]['note'],
                       people[people[p]['spouse']]['note'])
                 i += 1
-        if people[p]['gender'] == 'M' and people[p].get('generation') and not inFullTree(people[p]['father']):
+        if people[p]['gender'] == 'M' and people[p].get('generation') and not inFullTree(people[p]['father'], p0):
             print(p, getVitalYear(p, 'birth'), people[p]['note'])
             i += 1
     print(f"{i} threads to pull")
@@ -885,7 +853,7 @@ def line_chart(file, root):
 
 def birthdays(month, p0):
     for p in people:
-        if inFullTree(p) and month in str(people[p]['birthdate']):
+        if inFullTree(p, p0) and month in str(people[p]['birthdate']):
             announce(p, p0)
             print(' ')
 
@@ -923,7 +891,7 @@ def living_ancestors(p):
     alive = set()
     if not b0 and not d0:
         return n
-    for a in ancestors(p):
+    for a in getAncestors(p):
         b = getBirthYear(a)
         d = get_death_year(a)
         if not d and 2021 - b < 100:
