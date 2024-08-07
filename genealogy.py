@@ -5,12 +5,14 @@ import csv
 import bs4
 import math
 from typing import *
+import warnings
 
 people = dict()
 generations = list()
 
 
-def isDateFull(d: str) -> bool:
+def isDateFull(d: Union[str, int]) -> bool:
+    d = str(d)
     d = d.split(' ')
     return len(d) == 3
 
@@ -95,7 +97,7 @@ def import_people(file):
                     people[c]['mother'] = p
 
 
-def in_full_tree(p):
+def inFullTree(p):
     for g in generations:
         if p in people and people[p]['gender'] == 'F':
             if not people[p]['father'] and not people[p]['mother']:
@@ -125,160 +127,290 @@ def getParent(p: str, parent: str) -> Union[str, None]:
     return people.get(p, {}).get(parent)
 
 
-def individual(p):
+def individual(p: str):
     # child_check(p)
     person = people[p]
-    ancestor = '[p]' if not person['father'] else ''
-    name = f"{person['first']} {person['middle'] + ' ' if person['middle'] else ''}{person['last']}"
-    name += f"\index{{{person['last']}!{person['first'] + (' ' if person['middle'] else '')}{person['middle']}}}"
-    if person['title']:
-        name = f"{person['title']} {name}"
-    patriline = getLineage(p, 'father')
-    if patriline:
-        patriline = f" ({patriline})"
-    birth, death, accolades, married, spousebirth, spousedeath, sources = '', '', '', '', '', '', ''
-    if person['birthdate']:
-        full = isDateFull(person['birthdate'])
-        birth = f" was born {'on' if full else 'in'} {person['birthdate']}"
-        birth += ',' if person['birthplace'] else ''
-    if person['birthplace']:
-        birth += f" in {person['birthplace']}"
-    if any([person['birthdate'], person['birthplace']]):
-        birth += ';' if any([person['deathdate'], person['deathplace']]) else '.'
-    if person['deathdate']:
-        full = isDateFull(person['deathdate'])
-        death = f" died {'on' if full else 'in'} {person['deathdate']}"
-        death += ',' if person['deathplace'] else ''
-    if person['deathplace']:
-        death += f" in {person['deathplace']}"
-    death += '.' if death else ''
-    if not birth and not death:
-        birth = '.'
-    for a in ['army', 'mason']:
-        if person[a]:
-            accolades += f"\\{a}"
-    if accolades:
-        accolades = f" {accolades}"
-    if type(person['spouse']) == str:
-        person['spouse'] = [person['spouse']]
-    for s in sorted(person['spouse'], key=lambda x: get_marriage_year(p, x)):
-        spousebirth, spousedeath = '', ''
-        spousepatriline = getLineage(s, 'father')
-        if spousepatriline:
-            spousepatriline = f" ({spousepatriline})"
-        if s:
-            spouse = f"\\namelinkbold{{{s}}}{{{people[s]['shortname']}}}{spousepatriline}" if in_full_tree(
-                s) else f"\\textbf{{{people[s]['shortname']}}}"
-            if in_full_tree(s):
-                spouse += f"\index{{{people[s]['last']}!{people[s]['first'] + (' ' if people[s]['middle'] else '')}{people[s]['middle']}}}"
-        else:
-            continue
-        ns = person['spouse'].index(s) + 1
-        ns = f"({ns}) " if len(person['spouse']) > 1 else ''
-        married += f"\n{'He' if person['gender'] == 'M' else 'She'} married {ns}{spouse}"
-        if person.get('marriagedate', dict()).get(s):
-            married += f" on {person['marriagedate'][s]}"
-            married += ',' if person['marriageplace'].get(s) else ''
-        if person.get('marriageplace', dict()).get(s):
-            married += f" in {person['marriageplace'].get(s)}"
-        married += '.'
-        if people[s]['birthdate'] or any([people[s]['father'], people[s]['mother']]):
-            spousebirth = f"{' She' if person['gender'] == 'M' else 'He'} was born"
-        if people[s]['birthdate']:
-            full = isDateFull(people[s]['birthdate'])
-            spousebirth += f" {'on' if full else 'in'} {people[s]['birthdate']}"
-            if people[s]['birthplace']:
-                spousebirth += ',' if person['birthplace'] else ''
-                spousebirth += f" in {people[s]['birthplace']}"
-            spousebirth += ';' if people[s]['deathdate'] or people[s]['deathplace'] else '.'
-        if any([people[s]['father'], people[s]['mother']]):
-            if spousebirth[-1] in [';', '.']:
-                spousebirth = spousebirth[:-1]
-            if people[s]['father'] in people:
-                spousefather = f"\\namelink{{{people[s]['father']}}}{{{people[people[s]['father']]['shortname']}}}" if in_full_tree(
-                    people[s]['father']) else f"{people[people[s]['father']]['shortname']}"
-            else:
-                spousefather = people[s]['father']
-            if people[s]['mother'] in people:
-                spousemother = f"\\namelink{{{people[s]['mother']}}}{{{people[people[s]['mother']]['shortname']}}}" if in_full_tree(
-                    people[s]['mother']) else f"{people[people[s]['mother']]['shortname']}"
-            else:
-                spousemother = people[s]['mother']
-            spouseparents = ''
-            if spousefather:
-                spouseparents = f" to {spousefather}"
-                if spousemother:
-                    spouseparents += f" and {spousemother}"
-            elif spousemother:
-                spouseparents = f" to {spousemother}"
-            spousebirth += spouseparents
-            spousebirth += ';' if people[s]['deathdate'] or people[s]['deathplace'] else '.'
-        if people[s]['deathdate']:
-            full = isDateFull(people[s]['deathdate'])
-            spousedeath = ' She' if not people[s]['birthdate'] and not people[s]['birthplace'] else ''
-            spousedeath += f" died {'on' if full else 'in'} {people[s]['deathdate']}"
-            if people[s]['deathplace']:
-                spousedeath += ',' if person['deathplace'] else ''
-                spousedeath += f" in {people[s]['deathplace']}"
-            spousedeath += '.' if spousedeath else ''
-        married = f"{married}{spousebirth}{spousedeath}"
+    ancestor = getAncestorTag(person)
+    name = getFullName(person)
+    nameIndex = getNameIndex(person)
+    title = getTitle(person)
+    patriline = printLineage(p, 'father')
+    birth = combineDatePlace(person, 'birth')
+    death = combineDatePlace(person, 'death')
+    vitals = combineVitals(birth, death)
+    accolades = getAccolades(person)
+    spouseDetails = generateSpouse(person)
+    history = person.get('history', '')
+    childrenDetails = getChildrenDetails(person)
+    burialDetails = getBurialDetails(person)
+    sources = getSources(person)
 
-    history = '\n' + person['history'] if person['history'] else ''
+    return buildParagraphs(
+        buildParagraph(
+            buildSentence(
+                f"\individual{ancestor}{{{p}}}{{{title}{name}{nameIndex}}}",
+                accolades,
+                patriline,
+                vitals
+            ),
+            *spouseDetails
+        ),
+        childrenDetails,
+        burialDetails,
+        sources
+    )
+
+
+def getSources(person: Dict) -> str:
+    if not person['sources']:
+        return ''
+    allSources = person['sources']
     for s in person['spouse']:
-        if not s or not people[s]['history']:
+        if not s:
             continue
-        else:
-            history = f" {people[s]['history']}"
+        allSources |= people[s].get('sources', set())
+    sources = [f"\\item{{{s}}}" for s in sorted(allSources)]
+    return buildSentence('\\begin{source}', *sources, '\\end{source}')
 
-    children = ''
+
+def getBurialDetails(person: Dict) -> str:
+    if person['buried']:
+        return f"\\buried \\href{{{person['buriedlink']}}}{{{person['buried']}}}"
+    return ''
+
+
+def getChildrenDetails(person: Dict) -> str:
+    childrens = []
     for s in person['children']:
         if not person['children'][s]:
+            warnings.warn(f"{c} doesn't have an entry", Warning)
             continue
-        if s and s in people:
-            children += f"\n\n{person['shortname']} and {people[s]['shortname']}\\children\n\n"
-        elif s and s not in people:
-            children += f"\n\n{person['shortname']} and {s}\\children\n\n"
-        elif not s:
-            children += f"\n\n{person['shortname']}\\children\n\n"
-        for c in person['children'][s]:
+        parentDetails = getParentDetails(person, s) + '\n'
+        children = []
+        for c in sorted(person['children'][s], key=lambda y: getVitalYear(y, 'birth')):
             if c not in people:
-                print(f"{c} doesn't have an entry")
+                warnings.warn(f"{c} doesn't have an entry", Warning)
                 continue
-        for c in sorted([d for d in person['children'][s] if d in people], key=lambda y: get_birth_year(y)):
-            main = '[+]' if c in person['child'] else ''
-            born = f"born {people[c]['birthdate']}." if people[c]['birthdate'] else '.'
-            if people[c]['gender'] == 'F' and people[c].get('generation'):
-                if type(people[c]['spouse']) == str:
-                    born += f" She married \\namelink{{{people[c]['spouse']}}}{{{people[people[c]['spouse']]['shortname']}}}."
-                else:
-                    for cs in people[c]['spouse']:
-                        if not people.get(cs, dict()).get('generation'):
-                            continue
-                        born += f" She married \\namelink{{{cs}}}{{{people[cs]['shortname']}}}."
-            children += f"\\childlist{main}{{{c if main else ''}}}{{{people[c]['title'] + ' ' if people[c]['title'] else ''}{people[c]['shortname']}}}{{{born}}}\n"
+            childDetail = getChildDetails(person, c)
+            children += [childDetail]
         if children:
-            children = children[:-1]
+            children.insert(0, parentDetails)
+            childrens.append('\n'.join(children))
+    return '\n'.join(childrens)
 
-    buried = ''
-    if person['buried']:
-        buried = f"\n\n\\buried \\href{{{person['buriedlink']}}}{{{person['buried']}}}"
 
-    if person['sources']:
-        # sources = '\\begin{footnoterange}'
-        # for s in person['sources']:
-        #     sources += f"\\footnote{{{s}}}"
-        # sources += '\\end{footnoterange}'
-        sources += '\n\\begin{source}'
-        all_sources = person['sources']
-        for s in person['spouse']:
-            if not s:
-                continue
-            all_sources |= people[s].get('sources', set())
-        for s in sorted(all_sources):
-            sources += f"\\item{{{s}}}"
-        sources += '\\end{source}'
+def getChildDetails(person: Dict, c: str) -> str:
+    mainLine = getMainLine(person, c)
+    title = getTitle(people[c])
+    birth = childBirth(c)
+    marriage = childMarriage(c, mainLine)
+    return f"\\childlist{mainLine}{{{c if mainLine else ''}}}" \
+           f"{{{title}{people[c]['shortname']}}}" \
+           f"{{{joinComma(birth, marriage)}}}"
 
-    return f"\individual{ancestor}{{{p}}}{{{name}}}{accolades}{patriline}{birth}{death}{married}{history}{buried}{children}{sources}"
+
+def childMarriage(c: str, mainLine: str) -> str:
+    if people[c]['gender'] == 'M' or not mainLine:
+        return ''
+    spouses = people[c].get('spouse', '')
+    if type(spouses) == str:
+        spouses = [spouses]
+    for cs in spouses:
+        if not people.get(cs, dict()).get('generation'):
+            continue
+        return f"{getPronoun(people[c])} married {getShortNamelink(cs)}"
+
+
+def childBirth(c: str) -> str:
+    if people[c]['birthdate']:
+        return f"born {people[c]['birthdate']}"
+    return ''
+
+
+def getMainLine(person: Dict, c: str) -> str:
+    if c in person['child']:
+        return '[+]'
+    return ''
+
+
+def getParentDetails(person: Dict, s: str) -> str:
+    if not s:
+        return f"{person['shortname']}\\children"
+    if s not in people:
+        return f"{person['shortname']} and {s}\\children"
+    return f"{person['shortname']} and {people[s]['shortname']}\\children"
+
+
+def generateSpouse(person: Dict):
+    spouse: list = person['spouse']
+    if type(spouse) == str:
+        spouse: list = [spouse]
+    spouseDetail = []
+    for s in sorted(spouse, key=lambda x: getMarriageYear(person, x)):
+        if not s:
+            continue
+        spouseName = getSpouseName(s)
+        nSpouse = getSpouseNumber(s, spouse)
+        marriage = combineMarriageDatePlace(person, s)
+        birth = combineDatePlace(people[s], 'birth')
+        death = combineDatePlace(people[s], 'death')
+        vitals = combineVitals(birth, death, parents=getSpouseParents(s))
+        history = people[s].get('history')
+
+        spouseDetail += [
+            buildSentence(getPronoun(person), 'married', nSpouse, spouseName, marriage),
+            buildSentence(getPronoun(people[s]) if vitals else None, vitals),
+            history
+        ]
+    return spouseDetail
+
+
+def getSpouseParents(s: str) -> str:
+    spouseFather = people[s].get('father')
+    spouseMother = people[s].get('mother')
+    spouseFatherName = ''
+    spouseMotherName = ''
+    if spouseFather in people:
+        spouseFatherName = getShortNamelink(spouseFather)
+    if spouseMother in people:
+        spouseMotherName = getShortNamelink(spouseMother)
+    return ' and '.join(filter(None, [spouseFatherName, spouseMotherName]))
+
+
+def getShortNamelink(p: str) -> str:
+    if inFullTree(p):
+        return f"\\namelink{{{p}}}{{{people[p]['shortname']}}}"
+    return f"{people[p]['shortname']}"
+
+
+def getShortNamelinkBold(p: str) -> str:
+    if inFullTree(p):
+        return f"\\namelinkbold{{{p}}}{{{people[p]['shortname']}}}"
+    return f"{people[p]['shortname']}"
+
+
+def getSpouseName(s: str) -> str:
+    patriline = printLineage(s, 'father')
+    shortName = people[s]['shortname']
+    if inFullTree(s):
+        return buildSentence(getShortNamelinkBold(s), patriline, getNameIndex(people[s]))
+    return f"\\textbf{{{shortName}}}"
+
+
+def getSpouseNumber(s: str, spouse: iter) -> Union[int, str]:
+    nSpouse = spouse.index(s) + 1
+    if len(spouse) > 1:
+        return f"({nSpouse})"
+    return ''
+
+
+def getPronoun(person: Dict) -> str:
+    return {'M': 'He'}.get(person['gender'], 'She')
+
+
+def buildParagraphs(*paragraphs: iter) -> str:
+    return '\n\n'.join(filter(None, paragraphs))
+
+
+def buildParagraph(*sentences: iter) -> str:
+    return '. '.join(filter(None, sentences)) + '.'
+
+
+def buildSentence(*phrases: iter) -> str:
+    return ' '.join(filter(None, phrases))
+
+
+def getAccolades(person: Dict) -> str:
+    accolades = []
+    for a in ['army', 'mason']:
+        if person.get(a):
+            accolades.append(a)
+    return ''.join(f"\\{a}" for a in accolades)
+
+
+def combineVitals(birth: str, death: str, parents: str = '') -> str:
+    if birth:
+        birth = f"was born {birth}"
+    if parents:
+        birth += f" to {parents}"
+    if death:
+        death = f"died {death}"
+    vitals = '; '.join(filter(None, [birth, death]))
+    return vitals
+
+
+def combineDatePlace(person: Dict, vital: str) -> str:
+    if vital not in ['birth', 'death', 'marriage']:
+        raise KeyError(f'{vital} is not a vital statistic')
+    vitalDateKey: str = f'{vital}date'
+    vitalPlaceKey: str = f'{vital}place'
+    vitalDate: str = person[vitalDateKey]
+    vitalPlace: str = person[vitalPlaceKey]
+    date: str = ''
+    place: str = ''
+    if vitalDate:
+        full = isDateFull(vitalDate)
+        date = f"{'on' if full else 'in'} {vitalDate}"
+    if vitalPlace:
+        place = f"in {vitalPlace}"
+    return joinComma(date, place)
+
+
+def combineMarriageDatePlace(person: Dict, s: str) -> str:
+    vitalDateKey: str = 'marriagedate'
+    vitalPlaceKey: str = f'marriageplace'
+    vitalDate = person[vitalDateKey].get(s)
+    vitalPlace = person[vitalPlaceKey].get(s)
+    date: str = ''
+    place: str = ''
+    if vitalDate:
+        full = isDateFull(vitalDate)
+        date = f"{'on' if full else 'in'} {vitalDate}"
+    if vitalPlace:
+        place = f"in {vitalPlace}"
+    return joinComma(date, place)
+
+
+def joinComma(*phrases) -> str:
+    return ', '.join(filter(None, phrases))
+
+
+def printLineage(p, parent):
+    patriline = getLineage(p, parent)
+    if not patriline:
+        return ''
+    return f"({patriline})"
+
+
+def getTitle(person: Dict) -> str:
+    return person.get('title', '')
+
+
+def getNameIndex(person):
+    firstName = person['first']
+    middleName = person['middle']
+    lastName = person['last']
+    nameIndex = f"\index{{{lastName}!{joinName(firstName, middleName)}}}"
+    return nameIndex
+
+
+def getFullName(person: Dict) -> str:
+    firstName = person['first']
+    middleName = person['middle']
+    lastName = person['last']
+    name = joinName(firstName, middleName, lastName)
+    return name
+
+
+def joinName(*name: iter) -> str:
+    joinedName = ' '.join(filter(None, name))
+    return joinedName
+
+
+def getAncestorTag(person: Dict) -> str:
+    if not person['father']:
+        return '[p]'
+    return ''
 
 
 def descent(p, p0):
@@ -351,7 +483,7 @@ def generation_groups_old(p0):
                 continue
             # if any(s and s in people[p].get('spouse') for s in done):
             #     continue
-            if p and in_full_tree(p):
+            if p and inFullTree(p):
                 generations[0].add(p)
                 to_search |= set([people[p]['father'], people[p]['mother']])
                 to_search.remove(p)
@@ -364,56 +496,28 @@ def generation_groups_old(p0):
         del generations[0]
 
 
-def get_birth_year(p):
-    try:
-        date = people[p]['birthdate'].split(' ')
-    except:
-        return int(people[p]['birthdate'])
+def getVitalYear(p: str, vital: str) -> int:
+    if vital not in ['birth', 'death']:
+        raise KeyError(f"{vital} is not a vital statistic")
+    date: Union[int, str] = people.get(p, {}).get(f'{vital}date', 0)
     if not date:
-        year = 0
-    if len(date) == 3:
-        year = int(date[2])
-    elif len(date) == 2 and int(date[1]) > 31:
-        year = int(date[1])
-    else:
-        year = 0
-    return year
+        return 0
+    if type(date) == int:
+        return date
+    date = people[p][f'{vital}date'].split(' ')
+    return int(date[-1])
 
 
-def get_death_year(p):
-    try:
-        date = people[p]['deathdate'].split(' ')
-    except:
-        return int(people[p]['deathdate'])
-    if not date:
-        year = 0
-    if len(date) == 3:
-        year = int(date[2])
-    elif len(date) == 2 and int(date[1]) > 31:
-        year = int(date[1])
-    else:
-        year = 0
-    return year
-
-
-def get_marriage_year(p, s):
+def getMarriageYear(person: Dict, s: str) -> int:
     if not s:
         return 0
-    if s not in people[p]['marriagedate']:
-        return 0
-    try:
-        date = people[p]['marriagedate'][s].split(' ')
-    except:
-        return int(people[p]['marriagedate'][s])
+    date: Union[int, str] = person.get('marriagedate', {}).get(s, 0)
     if not date:
-        year = 0
-    if len(date) == 3:
-        year = int(date[2])
-    elif len(date) == 2 and int(date[1]) > 31:
-        year = int(date[1])
-    else:
-        year = 0
-    return year
+        return 0
+    if type(date) == int:
+        return date
+    date: list = person.get('marriagedate', {}).get(s, '').split(' ')
+    return int(date[-1])
 
 
 def export(file, p0):
@@ -425,36 +529,38 @@ def export(file, p0):
             if p0 in g and people[p0]['gender'] == 'F':
                 continue
             f.write(f"\\generationgroup\n\n")
-            for p in sorted(list(g), key=lambda y: get_birth_year(y)):
+            for p in sorted(list(g), key=lambda y: getVitalYear(y, 'birth')):
                 if people[p]['gender'] == 'F' and 'spouse' in people[p] and people[p]['spouse'][0]:
                     continue
                 try:
                     f.write(f"{individual(p)}\n\n")
                 except:
                     print(f"{p} error")
-    h_tree(file, p0)
-    line_chart(file, p0)
-    follow(lost=True)
-    unsourced()
+    # h_tree(file, p0)
+    # line_chart(file, p0)
+    # follow(lost=True)
+    # unsourced()
     print(f"{len(set.union(*generations))} total ancestors")
 
 
 def follow(g=None, lost=False):
     i = 0
-    for p in sorted(people, key=lambda p: get_birth_year(p)):
+    for p in sorted(people, key=lambda p: getVitalYear(p, 'birth')):
         if lost and people[p]['lost']:
             continue
         if g and people[p].get('generation') != g:
             continue
         if people[p]['gender'] == 'F' and people[p].get('spouse') and people[p].get('generation'):
             if not people[p]['father']:
-                print(p, people[p]['spouse'], get_birth_year(p), people[p]['note'], people[people[p]['spouse']]['note'])
+                print(p, people[p]['spouse'], getVitalYear(p, 'birth'), people[p]['note'],
+                      people[people[p]['spouse']]['note'])
                 i += 1
-            elif not in_full_tree(people[p]['father']):
-                print(p, people[p]['spouse'], get_birth_year(p), people[p]['note'], people[people[p]['spouse']]['note'])
+            elif not inFullTree(people[p]['father']):
+                print(p, people[p]['spouse'], getVitalYear(p, 'birth'), people[p]['note'],
+                      people[people[p]['spouse']]['note'])
                 i += 1
-        if people[p]['gender'] == 'M' and people[p].get('generation') and not in_full_tree(people[p]['father']):
-            print(p, get_birth_year(p), people[p]['note'])
+        if people[p]['gender'] == 'M' and people[p].get('generation') and not inFullTree(people[p]['father']):
+            print(p, getVitalYear(p, 'birth'), people[p]['note'])
             i += 1
     print(f"{i} threads to pull")
 
@@ -464,7 +570,7 @@ def unsourced(g=None):
     for g in generations[::-1][2:]:
         for p in g:
             if people[p]['gender'] == 'M' and not people[p]['sources']:
-                print(p, people[p]['shortname'], get_birth_year(p), people[p]['note'])
+                print(p, people[p]['shortname'], getVitalYear(p, 'birth'), people[p]['note'])
                 i += 1
     print(f"{i} sources to get")
     # return
@@ -476,7 +582,7 @@ def generation_count(children=False):
             N = len(set.union(*(
                 [set.union(
                     *[people[p]['children'][s] for s in people[p]['children']] if people[p]['children'] else [set()])
-                 for p in g])))
+                    for p in g])))
             print(f"{generations.index(g) + 1}\t{N}\t{len(g)}")
     else:
         for g in generations:
@@ -623,8 +729,8 @@ def line_chart(file, root):
     done = dict()
     while current:
         for p in list(current):
-            b = get_birth_year(p)
-            d = get_death_year(p)
+            b = getVitalYear(p, 'birth')
+            d = getVitalYear(p, 'death')
             # y = 0 if p == root else 2 * (done[list(people[p]['child'])[0]]['y'] - (1 if people[p]['gender'] == 'F' else -1))
             y = 0
             done.update({p: {'b': b, 'd': d, 'y': y}})
@@ -637,23 +743,23 @@ def line_chart(file, root):
     unknownb = set()
     unknownd = set()
     for p in done:
-        if not get_death_year(p):
-            if get_birth_year(p) and currentYear - get_birth_year(p) < 100:
+        if not getVitalYear(p, 'death'):
+            if getVitalYear(p, 'birth') and currentYear - getVitalYear(p, 'birth') < 100:
                 done[p]['d'] = currentYear
                 continue
             unknownd.add(p)
             done[p]['d'] = max(done[c]['b'] for c in people[p]['child'])
-            done[p]['d'] = max(done[p]['d'], max([get_marriage_year(p, s) for s in people[p]['marriagedate']] or [0]))
-        if not get_birth_year(p):
+            done[p]['d'] = max(done[p]['d'], max([getMarriageYear(p, s) for s in people[p]['marriagedate']] or [0]))
+        if not getVitalYear(p, 'birth'):
             unknownb.add(p)
             done[p]['b'] = min([
                                    done.get(people[p].get('mother', ''), dict()).get('d', 3000) or 3000,
                                    done.get(people[p].get('father', ''), dict()).get('d', 3000) or 3000,
                                    min(done[c]['b'] for c in people[p]['child']) - 20
                                ] + (
-                                   [get_marriage_year(p, s) or 3000 for s in people[p]['spouse'] if s in people] if
+                                   [getMarriageYear(p, s) or 3000 for s in people[p]['spouse'] if s in people] if
                                    people[p]['gender'] == 'M' else
-                                   [get_marriage_year(p, people[p]['spouse']) or 3000]
+                                   [getMarriageYear(p, people[p]['spouse']) or 3000]
                                ))
 
     N = len(generations)
@@ -743,9 +849,9 @@ def line_chart(file, root):
                      f"width='{6 * w / widx:.3f}' height='10pt' id='{p}-d'" \
                      f"class='unknownda' />"
         for s in people[p].get('marriageplace', []):
-            if not get_marriage_year(p, s):
+            if not getMarriageYear(p, s):
                 continue
-            flags += f"<image x='{get_marriage_year(p, s) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " \
+            flags += f"<image x='{getMarriageYear(p, s) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " \
                      f"height='9pt' href='flags/{get_state(p, 'marriage')[s].lower()}.png' style='transform: translateX(-7.36pt)'/>"
     for p in done:
         names += f"<text class='name {'nameunknown' if p in unknownb | unknownd else ''}'><tspan dy='2.5pt' x={done[p]['b'] * w / widx:.3f} y={done[p]['y']:.3f}>{people[p]['first']} {people[p]['last']}</tspan></text>"
@@ -779,7 +885,7 @@ def line_chart(file, root):
 
 def birthdays(month, p0):
     for p in people:
-        if in_full_tree(p) and month in str(people[p]['birthdate']):
+        if inFullTree(p) and month in str(people[p]['birthdate']):
             announce(p, p0)
             print(' ')
 
@@ -812,13 +918,13 @@ def announce(p, p0):
 
 
 def living_ancestors(p):
-    b0 = get_birth_year(p)
-    d0 = get_death_year(p)
+    b0 = getVitalYear(p, 'birth')
+    d0 = getVitalYear(p, 'death')
     alive = set()
     if not b0 and not d0:
         return n
     for a in ancestors(p):
-        b = get_birth_year(a)
+        b = getBirthYear(a)
         d = get_death_year(a)
         if not d and 2021 - b < 100:
             d = 2021
@@ -839,5 +945,5 @@ def get_state(p, time):
 
 def ancestors_by_age():
     byAge = [p for p in set.union(*generations) if people[p]['birthdate'] and people[p]['deathdate']]
-    for p in sorted(byAge, key=lambda p: get_death_year(p) - get_birth_year(p)):
-        print(people[p]['shortname'], get_death_year(p) - get_birth_year(p))
+    for p in sorted(byAge, key=lambda p: getVitalYear(p, 'death') - getVitalYear(p, 'birth')):
+        print(people[p]['shortname'], getVitalYear(p, 'death') - getVitalYear(p, 'birth'))
