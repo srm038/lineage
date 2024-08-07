@@ -1723,3 +1723,19 @@ def drawRadialChart(file, radialChart):
         f.write(svg.prettify())
 
 
+def begats(p: str, p0: str) -> str | list[str]:
+    dd = descent(p, p0)
+    begat = []
+    for i, d in enumerate(dd):
+        begat.append('')
+        for j, person in enumerate(d):
+            if j == 0:
+                begat[i] += f'{people[person]["first"]} {people[person]["last"]} begat {people[d[j + 1]]["first"]}'
+            elif j < len(d) - 1:
+                if people[person]["last"] == people[d[j + 1]]["last"]:
+                    begat[i] += f', {people[person]["first"]} begat {people[d[j + 1]]["first"]}'
+                else:
+                    begat[
+                        i] += f', {people[person]["first"]} begat {people[d[j + 1]]["first"]} {people[d[j + 1]]["last"]}'
+        begat[i] += '.'
+    return begat
