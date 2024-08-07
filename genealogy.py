@@ -121,7 +121,7 @@ def getParent(p: str, parent: str) -> Union[str, None]:
     return people.get(p, {}).get(parent)
 
 
-def individual(p: str, p0: str) -> str:
+def printIndividualEntry(p: str, p0: str) -> str:
     # child_check(p)
     person = people[p]
     ancestor = getAncestorTag(person)
@@ -501,7 +501,7 @@ def export(file, p0):
                 if people[p]['gender'] == 'F' and 'spouse' in people[p] and people[p]['spouse'][0]:
                     continue
                 try:
-                    f.write(f"{individual(p, p0)}\n\n")
+                    f.write(f"{printIndividualEntry(p, p0)}\n\n")
                 except:
                     print(f"{p} error")
     # h_tree(file, p0)
