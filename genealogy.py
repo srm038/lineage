@@ -1,11 +1,16 @@
+import copy
 import json
 import os
 import datetime
+import random
+
 import xlrd
 import csv
 import bs4
 from typing import *
 import warnings
+
+from matplotlib.backends.backend_ps import xpdf_distill
 
 people = dict()
 generations: List[Set] = list()
@@ -152,7 +157,6 @@ def getChildrenDetails(person: Dict, p0: str) -> str:
     childrens = []
     for s in person.get('children'):
         if not person.get('children')[s]:
-            warnings.warn(f"{c} doesn't have an entry", Warning)
             continue
         parentDetails = getParentDetails(person, s) + '\n'
         children = []
@@ -600,80 +604,424 @@ def generate_genealogy_tree(root, main=False):
     print(collapsed_tree[root])
 
 
-def h_tree(file, p, s=90):
+def generateHTree(file: str, p: str, size: int = 90):
+    N = len(generations) // 2
+    spacing: int = size + int(size / 6)
+
+    ancestors, descendants, initialPositions = getInitialPositions(size, N, p)
+    compaction = [horizontalCompactionLTR, horizontalCompactionRTL, verticalCompactionTTB, verticalCompactionBTT]
+    while True:
+        oldPositions = copy.deepcopy(initialPositions)
+        compaction = compaction[::-1]
+        for outerEdge in [True, False]:
+            for f in compaction:
+                initialPositions = f(initialPositions, descendants, ancestors, outerEdge)
+                initialPositions = compactTwigsLeaves(ancestors, descendants, initialPositions, spacing)
+        if getHArea(oldPositions, descendants)['area'] <= getHArea(initialPositions, descendants)['area']:
+            initialPositions = copy.deepcopy(oldPositions)
+            print(getHArea(initialPositions, descendants))
+            break
+
+    area = getHArea(initialPositions, descendants)
+    print(area)
+    drawHTree(area, descendants, file, initialPositions, size, p)
+
+
+def compactTwigsLeaves(ancestors, descendants, initialPositions, spacing):
+    initialPositions = verticalCompactionLeaves(initialPositions, descendants, ancestors, spacing)
+    initialPositions = horizontalCompactionLeaves(initialPositions, descendants, ancestors, spacing)
+    initialPositions = horizontalCompactionTwig(initialPositions, descendants, ancestors, spacing)
+    initialPositions = verticalCompactionTwig(initialPositions, descendants, ancestors, spacing)
+    return initialPositions
+
+
+def verticalCompactionLeaves(initialPositions: Dict, descendants: Dict, ancestors: Dict, spacing: int) -> Dict:
+    bars = getYBars(ancestors, descendants, initialPositions)
+    for b in bars:
+        for node in bars[b]:
+            if node not in ancestors and descendants[node] not in bars[b]:
+                childDist = getChildDist(descendants, initialPositions, node)
+                if childDist > spacing:
+                    xp, yp = initialPositions[node]
+                    yc = initialPositions[descendants[node]][1]
+                    initialPositions[node] = (xp, yc + spacing * {0: -1, 1: 1}[yc < yp])
+    return initialPositions
+
+
+def horizontalCompactionLeaves(initialPositions: Dict, descendants: Dict, ancestors: Dict, spacing: int) -> Dict:
+    bars = getXBars(ancestors, descendants, initialPositions)
+    for b in bars:
+        for node in bars[b]:
+            if node not in ancestors and descendants[node] not in bars[b]:
+                childDist = getChildDist(descendants, initialPositions, node)
+                if childDist > spacing:
+                    xp, yp = initialPositions[node]
+                    xc = initialPositions[descendants[node]][0]
+                    initialPositions[node] = (xc + spacing * {0: -1, 1: 1}[xc < xp], yp)
+    return initialPositions
+
+
+def verticalCompactionTwig(initialPositions: Dict, descendants: Dict, ancestors: Dict, spacing: int) -> Dict:
+    bars = getYBars(ancestors, descendants, initialPositions)
+    visibilityTTB = getVisibilityTTB(bars, initialPositions)
+    visibilityBTT = getVisibilityBTT(bars, initialPositions)
+    for b in bars:
+        if len(bars[b]) == 3 and bars[b][0] not in ancestors and bars[b][-1] not in ancestors:
+            p = bars[b][1]
+        elif len(bars[b]) == 2 and any(i not in ancestors for i in bars[b]):
+            p = bars[b][0] if bars[b][1] not in ancestors else bars[b][1]
+        else:
+            continue
+        childDist = getChildDist(descendants, initialPositions, p)
+        if childDist == spacing:
+            continue
+        c = descendants[p]
+        if c in bars.get(visibilityTTB.get(b, ()), []) + bars.get(visibilityBTT.get(b, ()), []):
+            yc = initialPositions[c][1]
+            for node in bars[b]:
+                xa, ya = initialPositions[node]
+                initialPositions[node] = (xa, yc + spacing * {0: -1, 1: 1}[yc < ya])
+    return initialPositions
+
+
+def horizontalCompactionTwig(initialPositions: Dict, descendants: Dict, ancestors: Dict, spacing: int) -> Dict:
+    bars = getXBars(ancestors, descendants, initialPositions)
+    visibilityLTR = getVisibilityLTR(bars, initialPositions)
+    visibilityRTL = getVisibilityRTL(bars, initialPositions)
+    for b in bars:
+        if len(bars[b]) == 3 and bars[b][0] not in ancestors and bars[b][-1] not in ancestors:
+            p = bars[b][1]
+        elif len(bars[b]) == 2 and any(i not in ancestors for i in bars[b]):
+            p = bars[b][0] if bars[b][1] not in ancestors else bars[b][1]
+        else:
+            continue
+        childDist = getChildDist(descendants, initialPositions, p)
+        if childDist == spacing:
+            continue
+        c = descendants[p]
+        if c in bars.get(visibilityLTR.get(b, ()), []) + bars.get(visibilityRTL.get(b, ()), []):
+            xc = initialPositions[c][0]
+            for node in bars[b]:
+                xa, ya = initialPositions[node]
+                initialPositions[node] = (xc + spacing * {0: -1, 1: 1}[xc < xa], ya)
+    return initialPositions
+
+
+def drawHTree(area, descendants, file, initialPositions, size, p0):
     with open(f"{file}-H.svg", 'r') as f:
         svg = bs4.BeautifulSoup(f, 'xml')
-
-    tree_style = 'fill:white;'
-    name_style = 'fill:black;text-anchor:middle;alignment-baseline:middle;'
+    treeStyle = f"fill:burlywood;"
+    pStyle = f"stroke:black;stroke-width:2px;"
+    gen = lambda g: f"fill:white;opacity:{g / len(generations):0.2f};"
+    nameStyle = 'fill:black;text-anchor:middle;alignment-baseline:middle;font-size:9pt;font-family:Chomsky;'
     duplicate = 'opacity:0.5;'
-    lines_style = 'stroke:black;stroke-width:5px;'
-
-    def max_gens(p):
-
-        n = list()
-        for c in people:
-            try:
-                for d in descent(c, p):
-                    n.append(d)
-            except:
-                pass
-        return max(len(i) for i in n)
-
-    N = len(generations) // 2
-
-    def position(d, s=s + 15, N=N):
-
-        x = 0
-        y = 0
-        if len(d) == 1:
-            return x, y
-        for i, j in enumerate(d[::-1][1:]):
-            if not (i + 1) % 2:
-                y += (-1 if people[j]['gender'] == 'M' else 1) * s * 2 ** ((N - people[j]['generation'] // 2))
-                # y += (-1 if people[j]['gender'] == 'M' else 1) * s * 2 ** ((N - max_gens(j) // 2))
-            else:
-                x += (-1 if people[j]['gender'] == 'M' else 1) * s * 2 ** ((N - people[j]['generation'] // 2 - 1))
-                # x += (-1 if people[j]['gender'] == 'M' else 1) * s * 2 ** ((N - max_gens(j) // 2))
-            # print(i, j, x, y, people[j]['generation'])
-        return x, y
-
+    linesStyle = 'stroke:black;stroke-width:5px;'
     tree = ''
     names = ''
     lines = ''
-    minx, miny, maxx, maxy = [0] * 4
-    # N = 5 // 2
-
-    done = set()
-    current = {p}
-    while current:
-        for c in list(current):
-            for d in descent(c, p):
-                # print(d, position(d))
-                x, y = position(d, N=N)
-                minx = min(minx, x)
-                maxx = max(maxx, x)
-                miny = min(miny, y)
-                maxy = max(maxy, y)
-                xc, yc = position(d[1:], N=N)
-                tree += f"<rect x='{x - s / 2}' y='{y - s / 2}' width='{s}' height='{s}' style='{tree_style}' />"
-                names += f"<text style='{name_style}{duplicate if c in done else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[c]['first']}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[c]['last']}</tspan></text>"
-                lines += f"<path d='M {x},{y} L {xc},{yc}' style='{lines_style}'/>"
-                done.add(c)
-            if people[c]['father'] and people[c]['father'] in people:
-                current.add(people[c]['father'])
-            if people[c]['mother'] and people[c]['mother'] in people:
-                current.add(people[c]['mother'])
-            current.discard(c)
-
+    minx = area['minx']
+    maxx = area['maxx']
+    miny = area['miny']
+    maxy = area['maxy']
+    for p in initialPositions:
+        x, y = initialPositions[p]
+        xc, yc = initialPositions[descendants[p]]
+        key = p[:-2]
+        rx = {'M': int(size / 6), 'F': int(size / 2)}[people[key]['gender']]
+        tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' rx='{rx}' width='{size}' height='{size}' style='{treeStyle}{pStyle if p0 == p[:-2] else ''}' id='{p}' />"
+        tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' width='{size}' height='{size}' style='{gen(people[key]['generation'])}'/>"
+        if people[key].get('last'):
+            names += f"<text style='{nameStyle}{duplicate if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key]['first']}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].get('last', '')}</tspan></text>"
+        else:
+            names += f"<text style='{nameStyle}{duplicate if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}'>{people[key]['first']}</tspan></text>"
+        lines += f"<path d='M {x},{y} L {xc},{yc}' style='{linesStyle}'/>"
     svg.find('svg').clear()
     svg.find('svg').contents = bs4.BeautifulSoup(lines, 'html.parser').contents
     svg.find('svg').contents += bs4.BeautifulSoup(tree, 'html.parser').contents
     svg.find('svg').contents += bs4.BeautifulSoup(names, 'html.parser').contents
-    svg.find('svg').attrs.update({'viewBox': f"{minx - s / 2} {miny - s / 2} {maxx - minx + s} {maxy - miny + s}"})
-
+    svg.find('svg').attrs.update(
+        {'viewBox': f"{minx - size / 2} {miny - size / 2} {maxx - minx + size} {maxy - miny + size}"})
     with open(f"{file}-H.svg", 'w') as f:
         f.write(svg.prettify())
+
+
+def getInitialPositions(s, N, p0) -> Tuple[Dict, Dict, Dict]:
+    initialPositions = {}
+    descendants = {}
+    ancestors = {}
+    done = set()
+    current = {p0}
+    while current:
+        for c in list(current):
+            personDescent = descent(c, p0)
+            for d in personDescent:
+                x, y = position(d, N, s=s + 15)
+                key = '-'.join([c, str(int(c in done))])
+                initialPositions.update({key: (x, y)})
+                xc, yc = position(d[1:], N=N)
+                done.add(c)
+                keyc = [i for i in initialPositions if initialPositions[i] == (xc, yc)]
+                if not keyc:
+                    continue
+                keyc = keyc[0]
+                descendants.update({key: keyc})
+                ancestors.setdefault(keyc, set())
+                ancestors[keyc].add(key)
+            if people[c].get('father') in people:
+                current.add(people[c]['father'])
+            if people[c].get('mother') in people:
+                current.add(people[c]['mother'])
+            current.discard(c)
+    return ancestors, descendants, initialPositions
+
+
+def position(d, N, s=90 + 15) -> Tuple[int, int]:
+    x, y = 0, 0
+    if len(d) == 1:
+        return x, y
+    for i, j in enumerate(d[::-1][1:]):
+        if not (i + 1) % 2:
+            y += (-1 if people[j]['gender'] == 'M' else 1) * s * 2 ** (N - people[j]['generation'] // 2)
+        else:
+            x += (-1 if people[j]['gender'] == 'M' else 1) * s * 2 ** (N - people[j]['generation'] // 2 - 1)
+    return x, y
+
+
+def getHArea(initialPositions: Dict, descendants: Dict) -> Dict[str, int]:
+    minx = min([p[0] for p in initialPositions.values()])
+    maxx = max([p[0] for p in initialPositions.values()])
+    miny = min([p[1] for p in initialPositions.values()])
+    maxy = max([p[1] for p in initialPositions.values()])
+    area = 0
+    for p in initialPositions:
+        if p not in descendants:
+            continue
+        edge = getChildDist(descendants, initialPositions, p)
+        area += edge
+    return {'maxx': maxx, 'maxy': maxy, 'minx': minx, 'miny': miny, 'area': area}
+
+
+def getChildDist(descendants: Dict, initialPositions: Dict, p: str) -> int:
+    c = descendants[p]
+    xp, yp = initialPositions[p]
+    xc, yc = initialPositions[c]
+    edge = abs((xc - xp) + (yc - yp))
+    return edge
+
+
+def horizontalCompactionLTR(initialPositions: Dict, descendants: Dict, ancestors: Dict,
+                            outerEdge: bool = False) -> Dict:
+    bars = getXBars(ancestors, descendants, initialPositions)
+    # Create visibility graph
+    # Update bar location
+    spacing = 90 + 15
+    for b in sorted(bars, key=lambda b: initialPositions[bars[b][0]][0], reverse=True):
+        visibility = getVisibilityLTR(bars, initialPositions)
+        if b not in visibility:
+            c = sorted(bars, key=lambda b: initialPositions[bars[b][0]][0], reverse=True)[0]
+            x = initialPositions[bars[c][0]][0] + spacing
+            if not outerEdge:
+                continue
+        else:
+            c = visibility[b]
+            x = initialPositions[bars[c][0]][0]
+        for node in bars[b]:
+            initialPositions[node] = (x - spacing, initialPositions[node][1])
+    return initialPositions
+
+
+def getVisibilityLTR(bars, initialPositions):
+    visibility: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    for b in sorted(bars, key=lambda b: initialPositions[bars[b][0]][0]):
+        x = initialPositions[bars[b][0]][0]
+        y1 = min([initialPositions[i][1] for i in bars[b]])
+        y2 = max([initialPositions[i][1] for i in bars[b]])
+        for c in sorted(bars, key=lambda b: initialPositions[bars[b][0]][0]):
+            if initialPositions[bars[c][0]][0] <= x:
+                continue
+            y3 = min([initialPositions[i][1] for i in bars[c]])
+            y4 = max([initialPositions[i][1] for i in bars[c]])
+            if y3 <= y1 <= y4 or y3 <= y2 <= y4:
+                visibility[b] = c
+                break
+            if y1 <= y3 <= y2 or y1 <= y4 <= y2:
+                visibility[b] = c
+                break
+    return visibility
+
+
+def verticalCompactionBTT(initialPositions: Dict, descendants: Dict, ancestors: Dict, outerEdge: bool = False) -> Dict:
+    bars = getYBars(ancestors, descendants, initialPositions)
+    # Create visibility graph
+    spacing = 90 + 15
+    for b in sorted(bars, key=lambda b: initialPositions[bars[b][0]][1]):
+        visibility = getVisibilityBTT(bars, initialPositions)
+        if b not in visibility:
+            c = sorted(bars, key=lambda b: initialPositions[bars[b][0]][1])[0]
+            y = initialPositions[bars[c][0]][1] - spacing
+            if not outerEdge:
+                continue
+        else:
+            c = visibility[b]
+            y = initialPositions[bars[c][0]][1]
+        for node in bars[b]:
+            initialPositions[node] = (initialPositions[node][0], y + spacing)
+    return initialPositions
+
+
+def getVisibilityBTT(bars, initialPositions):
+    visibility: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    for b in sorted(bars, key=lambda b: initialPositions[bars[b][0]][1], reverse=True):
+        y = initialPositions[bars[b][0]][1]
+        x1 = min([initialPositions[i][0] for i in bars[b]])
+        x2 = max([initialPositions[i][0] for i in bars[b]])
+        for c in sorted(bars, key=lambda b: initialPositions[bars[b][0]][1], reverse=True):
+            if initialPositions[bars[c][0]][1] >= y:
+                continue
+            x3 = min([initialPositions[i][0] for i in bars[c]])
+            x4 = max([initialPositions[i][0] for i in bars[c]])
+            if x3 <= x1 <= x4 or x3 <= x2 <= x4:
+                visibility[b] = c
+                break
+            if x1 <= x3 <= x2 or x1 <= x4 <= x2:
+                visibility[b] = c
+                break
+    return visibility
+
+
+def horizontalCompactionRTL(initialPositions: Dict, descendants: Dict, ancestors: Dict,
+                            outerEdge: bool = False) -> Dict:
+    bars = getXBars(ancestors, descendants, initialPositions)
+    # Create visibility graph
+    # Update bar location
+    spacing = 90 + 15
+    for b in sorted(bars, key=lambda b: initialPositions[bars[b][0]][0]):
+        visibility = getVisibilityRTL(bars, initialPositions)
+        if b not in visibility:
+            c = sorted(bars, key=lambda b: initialPositions[bars[b][0]][0])[0]
+            x = initialPositions[bars[c][0]][0] - spacing
+            if not outerEdge:
+                continue
+        else:
+            c = visibility[b]
+            x = initialPositions[bars[c][0]][0]
+        for node in bars[b]:
+            initialPositions[node] = (x + spacing, initialPositions[node][1])
+    return initialPositions
+
+
+def getVisibilityRTL(bars, initialPositions):
+    visibility: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    for b in sorted(bars, key=lambda b: initialPositions[bars[b][0]][0], reverse=True):
+        x = initialPositions[bars[b][0]][0]
+        y1 = min([initialPositions[i][1] for i in bars[b]])
+        y2 = max([initialPositions[i][1] for i in bars[b]])
+        for c in sorted(bars, key=lambda b: initialPositions[bars[b][0]][0], reverse=True):
+            if initialPositions[bars[c][0]][0] >= x:
+                continue
+            y3 = min([initialPositions[i][1] for i in bars[c]])
+            y4 = max([initialPositions[i][1] for i in bars[c]])
+            if y3 <= y1 <= y4 or y3 <= y2 <= y4:
+                visibility[b] = c
+                break
+            if y1 <= y3 <= y2 or y1 <= y4 <= y2:
+                visibility[b] = c
+                break
+    return visibility
+
+
+def verticalCompactionTTB(initialPositions: Dict, descendants: Dict, ancestors: Dict, outerEdge: bool = False) -> Dict:
+    bars = getYBars(ancestors, descendants, initialPositions)
+    spacing = 90 + 15
+    for b in sorted(bars, key=lambda b: initialPositions[bars[b][0]][1], reverse=True):
+        visibility = getVisibilityTTB(bars, initialPositions)
+        if b not in visibility:
+            c = sorted(bars, key=lambda b: initialPositions[bars[b][0]][1], reverse=True)[0]
+            y = initialPositions[bars[c][0]][1] + spacing
+            if not outerEdge:
+                continue
+        else:
+            c = visibility[b]
+            y = initialPositions[bars[c][0]][1]
+        for node in bars[b]:
+            initialPositions[node] = (initialPositions[node][0], y - spacing)
+    return initialPositions
+
+
+def getVisibilityTTB(bars, initialPositions):
+    visibility: Dict[Tuple[int, int], Tuple[int, int]] = {}
+    for b in sorted(bars, key=lambda b: initialPositions[bars[b][0]][1]):
+        y = initialPositions[bars[b][0]][1]
+        x1 = min([initialPositions[i][0] for i in bars[b]])
+        x2 = max([initialPositions[i][0] for i in bars[b]])
+        for c in sorted(bars, key=lambda b: initialPositions[bars[b][0]][1]):
+            if initialPositions[bars[c][0]][1] <= y:
+                continue
+            x3 = min([initialPositions[i][0] for i in bars[c]])
+            x4 = max([initialPositions[i][0] for i in bars[c]])
+            if x3 <= x1 <= x4 or x3 <= x2 <= x4:
+                visibility[b] = c
+                break
+            if x1 <= x3 <= x2 or x1 <= x4 <= x2:
+                visibility[b] = c
+                break
+    return visibility
+
+
+def getXBars(ancestors: Dict, descendants: Dict, initialPositions: Dict) -> Dict[Tuple[int, int], List[str]]:
+    xPositions: Set[int] = {initialPositions[i][0] for i in initialPositions}
+    # Create axis dictionary
+    axis: Dict = {}
+    for x in sorted(xPositions):
+        nodes: Iterable = sorted({i for i in initialPositions if initialPositions[i][0] == x},
+                                 key=lambda n: initialPositions[n][1])
+        axis.update({x: list(nodes)})
+    # Create bar dictionary
+    bars: Dict[Tuple[int, int], List[str]] = {}
+    for x in axis:
+        barIndex = 0
+        done = set()
+        bars.update({(x, barIndex): []})
+        for i, u in enumerate(axis[x]):
+            if u in done:
+                continue
+            bars[(x, barIndex)].append(u)
+            if i + 1 == len(axis[x]):
+                break
+            v = axis[x][i + 1]
+            if not v == descendants.get(u) and v not in ancestors.get(u, set()):
+                barIndex += 1
+                bars.update({(x, barIndex): []})
+            done.add(u)
+    return bars
+
+
+def getYBars(ancestors: Dict, descendants: Dict, initialPositions: Dict) -> Dict[Tuple[int, int], List[str]]:
+    yPositions: Set[int] = {initialPositions[i][1] for i in initialPositions}
+    # Create axis dictionary
+    axis: Dict = {}
+    for y in sorted(yPositions):
+        nodes: Iterable = sorted({i for i in initialPositions if initialPositions[i][1] == y},
+                                 key=lambda n: initialPositions[n][0])
+        axis.update({y: list(nodes)})
+    # Create bar dictionary
+    bars: Dict[Tuple[int, int], List[str]] = {}
+    for y in axis:
+        barIndex = 0
+        done = set()
+        bars.update({(y, barIndex): []})
+        for i, u in enumerate(axis[y]):
+            if u in done:
+                continue
+            bars[(y, barIndex)].append(u)
+            if i + 1 == len(axis[y]):
+                break
+            v = axis[y][i + 1]
+            if not v == descendants.get(u) and v not in ancestors.get(u, set()):
+                barIndex += 1
+                bars.update({(y, barIndex): []})
+            done.add(u)
+    return bars
 
 
 def line_chart(file, root):
