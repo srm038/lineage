@@ -6,6 +6,7 @@ import datetime
 import bs4
 from typing import *
 import warnings
+import re
 
 people = dict()
 generations: List[Set] = list()
@@ -59,12 +60,20 @@ def importFamily(familyName: str, p0: str):
                 for c in people[p].get('child', set()):
                     if c in people[p]['children'][s]:
                         people[s]['child'].add(c)
-    for p in people:
+    for p in list(people):
         if people[p]['gender'] == 'M':
             for s in people[p].get('children', dict()):
                 for c in people[p]['children'][s]:
                     if not c:
                         continue
+                    if c not in people:
+                        people.update({c: {
+                            'first': re.sub(f"([mf]-)?(\D+)({people[p].get('last', '').lower()})?\d*", '\g<2>',
+                                            c).capitalize(),
+                            'last': people[p].get('last', ''),
+                            'gender': re.sub(f"([mf]?)-?(\w+)", '\g<1>', c)
+                        }})
+                        people[c]['shortname'] = joinName(people[c].get('first'), people[c].get('last'))
                     people[c]['father'] = p
                     people[c]['mother'] = s
         if people[p]['gender'] == 'F':
@@ -517,23 +526,36 @@ def writeTitle(f, familyName: str):
 
 def follow(p0: str, g=None, lost=False):
     i = 0
+    endOfLine = dict()
     for p in sorted(people, key=lambda p: getVitalYear(p, 'birth') or 3000):
-        if lost and people[p]['lost']:
+        if lost and people[p].get('lost'):
             continue
         if g and people[p].get('generation') != g:
             continue
         if people[p]['gender'] == 'F' and people[p].get('spouse') and people[p].get('generation'):
+            if type(people[p].get('spouse')) == list:
+                spouseNote = ', '.join([people[s].get('note') for s in people[p]['spouse'] if s])
+            else:
+                spouseNote = people[people[p]['spouse']].get('note')
             if not people[p].get('father'):
-                print(p, people[p]['spouse'], getVitalYear(p, 'birth'), people[p].get('note'),
-                      people[people[p]['spouse']].get('note'))
+                endOfLine.update({
+                    p: {'spouse': people[p]['spouse'], 'birthyear': getVitalYear(p, 'birth'),
+                        "note": people[p].get('note'), 'spouseNote': spouseNote}
+                })
                 i += 1
             elif not inFullTree(people[p].get('father'), p0):
-                print(p, people[p]['spouse'], getVitalYear(p, 'birth'), people[p].get('note'),
-                      people[people[p]['spouse']].get('note'))
+                endOfLine.update({
+                    p: {'spouse': people[p]['spouse'], 'birthyear': getVitalYear(p, 'birth'),
+                        "note": people[p].get('note'), 'spouseNote': spouseNote}
+                })
                 i += 1
         if people[p]['gender'] == 'M' and people[p].get('generation') and not inFullTree(people[p].get('father'), p0):
-            print(p, getVitalYear(p, 'birth'), people[p].get('note'))
-            i += 1
+            endOfLine.update({
+                p: {'birthyear': getVitalYear(p, 'birth'), "note": people[p].get('note')}
+            })
+        i += 1
+    for line in sorted(endOfLine, key=lambda p: endOfLine[p].get('birthyear') or 0):
+        print(line, endOfLine[line])
     print(f"{i} threads to pull")
 
 
@@ -731,6 +753,14 @@ def drawHTree(area, descendants, file, initialPositions, size, p0):
     nameStyle = 'fill:black;text-anchor:middle;alignment-baseline:middle;font-size:9pt;font-family:Chomsky;'
     duplicate = 'opacity:0.5;'
     linesStyle = 'stroke:black;stroke-width:5px;'
+    styles = f"<style type='text/css'>" \
+             f".tree {{{treeStyle}}} " \
+             f".name {{{nameStyle}}} " \
+             f".duplicate {{{duplicate}}} " \
+             f".line {{{linesStyle}}} " \
+             f".tree {{{treeStyle}}}" \
+             f".primary {{{pStyle}}} " \
+             f"</style>"
     tree = ''
     names = ''
     lines = ''
@@ -743,15 +773,16 @@ def drawHTree(area, descendants, file, initialPositions, size, p0):
         xc, yc = initialPositions[descendants[p]]
         key = p[:-2]
         rx = {'M': int(size / 6), 'F': int(size / 2)}[people[key]['gender']]
-        tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' rx='{rx}' width='{size}' height='{size}' style='{treeStyle}{pStyle if p0 == p[:-2] else ''}' id='{p}' />"
+        tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' rx='{rx}' width='{size}' height='{size}' class='tree{' primary' if p0 == p[:-2] else ''}' id='{p}' />"
         tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' width='{size}' height='{size}' style='{gen(people[key]['generation'])}'/>"
         if people[key].get('last'):
-            names += f"<text style='{nameStyle}{duplicate if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key]['first']}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].get('last', '')}</tspan></text>"
+            names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key]['first']}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].get('last', '')}</tspan></text>"
         else:
-            names += f"<text style='{nameStyle}{duplicate if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}'>{people[key]['first']}</tspan></text>"
-        lines += f"<path d='M {x},{y} L {xc},{yc}' style='{linesStyle}'/>"
+            names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}'>{people[key]['first']}</tspan></text>"
+        lines += f"<path d='M {x},{y} L {xc},{yc}' class='line'/>"
     svg.find('svg').clear()
-    svg.find('svg').contents = bs4.BeautifulSoup(lines, 'html.parser').contents
+    svg.find('svg').contents = bs4.BeautifulSoup(styles, 'html.parser').contents
+    svg.find('svg').contents += bs4.BeautifulSoup(lines, 'html.parser').contents
     svg.find('svg').contents += bs4.BeautifulSoup(tree, 'html.parser').contents
     svg.find('svg').contents += bs4.BeautifulSoup(names, 'html.parser').contents
     svg.find('svg').attrs.update(
@@ -1070,9 +1101,9 @@ def generateLineTree(file, root):
 
     numGenerations = len(generations)
     ancestors, descendants, initialPositions = getInitialPositionsLine(pt2px(10), numGenerations, root)
-    positions = verticalCompactionLineBTT(done, initialPositions, descendants, ancestors)
     positions = verticalCompactionLineTTB(done, initialPositions, descendants, ancestors)
     positions = verticalCompactionLineBTT(done, initialPositions, descendants, ancestors)
+    positions = verticalCompactionLineTTB(done, initialPositions, descendants, ancestors)
     for p in done:
         done[p]['y'] = positions[p]
     minY = min(done[p]['y'] for p in done)
@@ -1447,12 +1478,16 @@ def pt2px(pt: Union[float, int]) -> float:
     return pt / 0.75
 
 
-def generateID(name: dict) -> str:
+def generateID(name: dict) -> dict:
     nameID = (name.get('first', '') + name.get('last', '')).replace(' ', '').lower()
-    nameID = nameID.replace('.', '')
+    nameID = nameID.replace('.', '').replace("'", '')
+    name.update({"id": generateIDn(nameID)})
+    return name
+
+
+def generateIDn(nameID: str) -> str:
     i = 1
     while True:
         if (nameIDi := nameID + str(i) if i > 1 else nameID) not in people:
             return nameIDi
         i += 1
-    return nameID
