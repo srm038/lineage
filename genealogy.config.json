@@ -50,8 +50,7 @@
         }
       },
       "buriedlink": {
-        "type": "string",
-        "format": "uri"
+         "$ref": "#/definitions/plusCode"
       },
       "buried": {
         "$ref": "#/definitions/nonEmptyString"
@@ -162,13 +161,16 @@
       "oneOf": [
         {
           "type": "string",
-          "pattern": "[A-Za-z]+( [0-9]{1,2})?, [0-9]{4}"
+          "pattern": "[A-Za-z]+( [0-9]{1,2})?, [0-9]{3,4}"
         },
         {
           "type": "number",
-          "minimum": 1000
+          "minimum": 800
         }
       ]
+    }, "plusCode": {
+      "type": "string",
+      "pattern": "[A-Z0-9]+?\+[A-Z0-9]+?"
     }
   }
 }

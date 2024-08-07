@@ -3,10 +3,12 @@ import json
 import math
 import os
 import datetime
+
 import bs4
 from typing import *
 import warnings
 import re
+import pluscodes
 
 people = dict()
 generations: List[Set] = list()
@@ -202,7 +204,7 @@ def getChildDetails(person: Dict, c: str, p0: str) -> str:
     birth = childBirth(c)
     marriage = childMarriage(c, mainLine, p0)
     return f"\\childlist{mainLine}{{{c if mainLine else ''}}}" \
-           f"{{{buildSentence(title, joinComma(people[c]['shortname']), antonym)}}}" \
+           f"{{{buildSentence(title, joinComma(people[c]['shortname'], antonym))}}}" \
            f"{{{buildParagraph(birth, marriage)}}}"
 
 
@@ -1539,7 +1541,7 @@ def drawZegelchart(p: str):
         if next((j for j, e in enumerate(descendants) if e['id'] == getParent(d['id'], 'father')), None) is not None:
             if marriageYear := getMarriageYear(people[getParent(d['id'], 'father')], getParent(d['id'], 'mother')):
                 lines += f"<path id='{d['id']}-parent' d='M {d['b']:.3f} {y(i) + toPt(5):.3f} H {marriageYear:.3f}' />"
-        names += f"<text x='{currentYear + toPt(2):.3f}' y='{y(i)+toPt(5):.3f}'>{people[d['id']]['shortname']}</text>"
+        names += f"<text x='{currentYear + toPt(2):.3f}' y='{y(i) + toPt(5):.3f}'>{people[d['id']]['shortname']}</text>"
         done.add(d['id'])
     svg.find('g', id="lives").contents = bs4.BeautifulSoup(lives, 'html.parser').contents
     svg.find('g', id="lines").contents = bs4.BeautifulSoup(lines, 'html.parser').contents
@@ -1568,3 +1570,23 @@ def generateZegelchart(p: str) -> List[Dict[str, Union[int, str, None]]]:
             childDescent = generateZegelchart(child)
             descent[-1:-1] = childDescent
     return descent
+
+
+def dms(old):
+    direction = {'N':1, 'S':-1, 'E': 1, 'W':-1}
+    new = old.replace(u'°',' ').replace('\'',' ').replace('"',' ')
+    new = new.split()
+    new_dir = new.pop()
+    new.extend([0,0,0])
+    return (int(new[0])+int(new[1])/60.0+int(new[2])/3600.0) * direction[new_dir]
+
+
+def getCoordinates(link):
+    coords  = pluscodes.decode(link).center()
+    return f'{coords.lat},{coords.lon}'
+
+
+def printGraves():
+    for p in people:
+        if 'buriedlink' in people[p]:
+            print(f'{getFullName(people[p])},"{getCoordinates(people[p]["buriedlink"])}"')
