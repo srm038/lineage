@@ -142,7 +142,7 @@ def individual(p: str, p0: str) -> str:
     return buildParagraphs(
         buildParagraph(
             buildSentence(
-                f"\individual{ancestor}{{{p}}}{{{title}{name}{nameIndex}}}",
+                f"\individual{ancestor}{{{p}}}{{{buildSentence(title, name)}}}{nameIndex}}}",
                 accolades,
                 patriline,
                 vitals
@@ -199,7 +199,7 @@ def getChildDetails(person: Dict, c: str, p0: str) -> str:
     birth = childBirth(c)
     marriage = childMarriage(c, mainLine, p0)
     return f"\\childlist{mainLine}{{{c if mainLine else ''}}}" \
-           f"{{{title}{people[c]['shortname']}}}" \
+           f"{{{buildSentence(title, people[c]['shortname'])}}}" \
            f"{{{joinComma(birth, marriage)}}}"
 
 
@@ -885,17 +885,18 @@ def announce(p, p0):
         print(a)
 
 
-def living_ancestors(p):
+def getLivingAncestors(p: str) -> Set[str]:
     b0 = getVitalYear(p, 'birth')
     d0 = getVitalYear(p, 'death')
     alive = set()
     if not b0 and not d0:
-        return n
+        raise ValueError(f'{p} doesnt have vital statistics')
+    year = datetime.date.today().year
     for a in getAncestors(p):
-        b = getBirthYear(a)
-        d = get_death_year(a)
-        if not d and 2021 - b < 100:
-            d = 2021
+        b = getVitalYear(a, 'birth')
+        d = getVitalYear(a, 'birth')
+        if not d and year - b < 100:
+            d = year
         if b0 and d and d > b0:
             alive.add(a)
     return alive
