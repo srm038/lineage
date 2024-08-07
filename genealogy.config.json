@@ -116,10 +116,25 @@
       "army": {
         "type": "boolean"
       },
+      "kia": {
+        "type": "boolean"
+      },
       "mason": {
         "type": "boolean"
       },
+      "crusade": {
+        "type": "boolean"
+      },
+      "templar": {
+        "type": "boolean"
+      },
       "title": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "antonym": {
+        "$ref": "#/definitions/nonEmptyString"
+      },
+      "nickname": {
         "$ref": "#/definitions/nonEmptyString"
       },
       "lost": {
