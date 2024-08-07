@@ -82,18 +82,11 @@
         ]
       },
       "child": {
-        "oneOf": [
-          {
-            "type": "array",
-            "items": {
-              "$ref": "#/definitions/nonEmptyString"
-            },
-            "uniqueItems": true
-          },
-          {
-            "$ref": "#/definitions/nonEmptyString"
-          }
-        ]
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/nonEmptyString"
+        },
+        "uniqueItems": true
       },
       "history": {
         "$ref": "#/definitions/nonEmptyString"
@@ -135,7 +128,8 @@
     },
     "required": [
       "id",
-      "first"
+      "first",
+      "gender"
     ],
     "dependentRequired": {
       "buriedLink": [
