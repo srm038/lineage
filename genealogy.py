@@ -26,6 +26,8 @@ def importFamily(familyName: str, p0: str):
     people.clear()
     with open(fr"{os.getcwd()}\{familyName}.json", 'r') as f:
         rawData = json.load(f)
+    if not runLinter(rawData):
+        raise KeyError
     for p in rawData:
         pid = p['id']
         people.update({pid: {k: v for k, v in p.items() if k != 'id'}})
@@ -74,6 +76,18 @@ def importFamily(familyName: str, p0: str):
             for c in people[p].get('child', set()):
                 people[c]['mother'] = p
     updateGenerationGroups(p0)
+
+
+def runLinter(rawData: Dict) -> bool:
+    ids: Set[str] = set()
+    linted = True
+    for person in rawData:
+        if person['id'] in ids:
+            warnings.warn(f"{person['id']} is a duplicate ID", Warning)
+            linted = False
+            continue
+        ids.add(person['id'])
+    return linted
 
 
 def inFullTree(p: str, p0: str) -> bool:
