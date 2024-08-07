@@ -1602,8 +1602,8 @@ def getCoordinates(link):
 
 def printGraves():
     for p in people:
-        if 'buriedlink' in people[p]:
-            print(f'{getFullName(people[p])},"{getCoordinates(people[p]["buriedlink"])}"')
+        if 'plusCode' in people[p].get('buried', {}):
+            print(f'{getFullName(people[p])},"{getCoordinates(people[p]["buried"]["plusCode"])}"')
 
 
 phi = lambda a, b: a + b / 2

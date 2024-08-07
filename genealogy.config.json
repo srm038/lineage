@@ -5,6 +5,7 @@
   "type": "array",
   "items": {
     "type": "object",
+    "additionalProperties": false,
     "properties": {
       "id": {
         "$ref": "#/definitions/nonEmptyString"
@@ -49,11 +50,22 @@
           }
         }
       },
-      "buriedlink": {
-         "$ref": "#/definitions/plusCode"
-      },
       "buried": {
-        "$ref": "#/definitions/nonEmptyString"
+        "type": "object",
+        "required": [
+          "cemetery"
+        ],
+        "properties": {
+          "cemetery": {
+            "$ref": "#/definitions/nonEmptyString"
+          },
+          "plusCode": {
+            "$ref": "#/definitions/plusCode"
+          },
+          "date": {
+            "$ref": "#/definitions/date"
+          }
+        }
       },
       "father": {
         "$ref": "#/definitions/nonEmptyString"
@@ -118,6 +130,9 @@
       "kia": {
         "type": "boolean"
       },
+      "pow": {
+        "type": "boolean"
+      },
       "mason": {
         "type": "boolean"
       },
@@ -145,11 +160,6 @@
       "first",
       "gender"
     ],
-    "dependentRequired": {
-      "buriedLink": [
-        "buried"
-      ]
-    },
     "uniqueItems": true
   },
   "definitions": {
@@ -168,9 +178,10 @@
           "minimum": 800
         }
       ]
-    }, "plusCode": {
+    },
+    "plusCode": {
       "type": "string",
-      "pattern": "[A-Z0-9]+?\+[A-Z0-9]+?"
+      "pattern": "[A-Z0-9]+?\\+[A-Z0-9]+?"
     }
   }
 }
