@@ -10,17 +10,32 @@
       "id": {
         "$ref": "#/definitions/nonEmptyString"
       },
-      "first": {
-        "$ref": "#/definitions/nonEmptyString"
-      },
-      "middle": {
-        "$ref": "#/definitions/nonEmptyString"
-      },
-      "last": {
-        "$ref": "#/definitions/nonEmptyString"
-      },
-      "shortname": {
-        "$ref": "#/definitions/nonEmptyString"
+      "name": {
+        "additionalProperties": false,
+        "required": ["first"],
+        "properties": {
+          "first": {
+            "$ref": "#/definitions/nonEmptyString"
+          },
+          "middle": {
+            "$ref": "#/definitions/nonEmptyString"
+          },
+          "last": {
+            "$ref": "#/definitions/nonEmptyString"
+          },
+          "shortname": {
+            "$ref": "#/definitions/nonEmptyString"
+          },
+          "title": {
+            "$ref": "#/definitions/nonEmptyString"
+          },
+          "antonym": {
+            "$ref": "#/definitions/nonEmptyString"
+          },
+          "nickname": {
+            "$ref": "#/definitions/nonEmptyString"
+          }
+        }
       },
       "birth": {
         "type": "object",
@@ -156,22 +171,13 @@
       "templar": {
         "type": "boolean"
       },
-      "title": {
-        "$ref": "#/definitions/nonEmptyString"
-      },
-      "antonym": {
-        "$ref": "#/definitions/nonEmptyString"
-      },
-      "nickname": {
-        "$ref": "#/definitions/nonEmptyString"
-      },
       "lost": {
         "type": "boolean"
       }
     },
     "required": [
       "id",
-      "first",
+      "name",
       "gender"
     ],
     "uniqueItems": true

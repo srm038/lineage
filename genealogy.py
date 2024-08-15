@@ -45,7 +45,7 @@ def importFamily(familyName: str, p0: str):
             person[i] = person[i].strip()
             person[i] = person[i].replace(':', "\\\"")
         if 'shortname' not in person:
-            person['shortname'] = joinName(person.get('first'), person.get('last'))
+            person['shortname'] = joinName(person.get("name", {}).get("first"), person.get("name", {}).get("last"))
         for i in ['marriagedate', 'marriageplace', 'children']:
             spouses = list(person.get(i, set()))
             person.setdefault('spouse', [])
@@ -80,7 +80,7 @@ def importFamily(familyName: str, p0: str):
                             'last': people[p].get('last', ''),
                             'gender': re.sub(f"([mf]?)-?(\w+)", '\g<1>', c)
                         }})
-                        people[c]['shortname'] = joinName(people[c].get('first'), people[c].get('last'))
+                        people[c]['shortname'] = joinName(people[c].get("name", {}).get("first"), people[c].get("name", {}).get("last"))
                     people[c]['father'] = p
                     people[c]['mother'] = s
         if people[p]['gender'] == 'F':
@@ -113,7 +113,7 @@ def getLineage(p: str, parent: str) -> str:
     if not p1 or p1 not in people:
         return ''
     parentLine = getLineage(p1, parent)
-    line: str = f"\\namelink{{{p1}}}{{{people[p1]['first']}}}"
+    line: str = f"\\namelink{{{p1}}}{{{people[p1].get('name', {}).get('first')}}}"
     line += ', ' if parentLine else ''
     line += parentLine
     return line
@@ -394,17 +394,17 @@ def getAntonym(person: Dict) -> str:
 
 
 def getNameIndex(person: Dict) -> str:
-    firstName = person.get('first')
-    middleName = person.get('middle')
-    lastName = person.get('last')
+    firstName = person.get("name", {}).get("first")
+    middleName = person.get("name", {}).get("middle")
+    lastName = person.get("name", {}).get("last")
     nameIndex = f"\index{{{lastName or ''}!{joinName(firstName, middleName)}}}"
     return nameIndex
 
 
 def getFullName(person: Dict) -> str:
-    firstName = person.get('first')
-    middleName = person.get('middle')
-    lastName = person.get('last')
+    firstName = person.get("name", {}).get("first")
+    middleName = person.get("name", {}).get("middle")
+    lastName = person.get("name", {}).get("last")
     name = joinName(firstName, middleName, lastName)
     return name
 
@@ -608,11 +608,11 @@ def box_dim(N, f=2, W=48, m=1):
 
 
 def generate_genealogy_tree(root, main=False):
-    tree = {root: "parent{g{" + f"{people[root]['first']} {people[root]['last'] or '---'}" + "}}"}
+    tree = {root: "parent{g{" + f"{people[root].get('name', {}).get('first')} {people[root].get('name', {}).get('last') or '---'}" + "}}"}
     main_people = set()
     for g in generations:
         for p in g:
-            tree.update({p: "parent{g{" + f"{people[p]['first']} {people[p]['last'] or '---'}" + "}}"})
+            tree.update({p: "parent{g{" + f"{people[p].get('name', {}).get('first')} {people[p].get('name', {}).get('last') or '---'}" + "}}"})
             main_people.add(p)
     done = set()
     collapsed_tree = tree.copy()
@@ -785,10 +785,10 @@ def drawHTree(area, descendants, file, initialPositions, size, p0):
         rx = {'M': int(size / 6), 'F': int(size / 2)}[people[key]['gender']]
         tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' rx='{rx}' width='{size}' height='{size}' class='tree{' primary' if p0 == p[:-2] else ''}' id='{p}' />"
         tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' width='{size}' height='{size}' style='{gen(people[key]['generation'])}'/>"
-        if people[key].get('last'):
-            names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key]['first']}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].get('last', '')}</tspan></text>"
+        if people[key].get("name", {}).get("last"):
+            names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key].get('name', {}).get('first')}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].get('last', '')}</tspan></text>"
         else:
-            names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}'>{people[key]['first']}</tspan></text>"
+            names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}'>{people[key].get('name', {}).get('first')}</tspan></text>"
         lines += f"<path d='M {x},{y} L {xc},{yc}' class='line'/>"
     svg.find('svg').clear()
     svg.find('svg').contents = bs4.BeautifulSoup(styles, 'html.parser').contents
@@ -1108,12 +1108,12 @@ def getApproxVitals(root):
         if not getVitalYear(p, 'birth'):
             unknownb.add(p)
             done[p]['b'] = getApproxBirth(done, p)
-    return done
+    return done, unknownb, unknownd
 
 
 def generateLineTree(file, root):
     currentYear: int = datetime.datetime.now().year + 10
-    done = getApproxVitals(root)
+    done, unknownb, unknownd = getApproxVitals(root)
 
     numGenerations = len(generations)
     ancestors, descendants, initialPositions = getInitialPositionsLine(pt2px(10), numGenerations, root)
@@ -1201,7 +1201,7 @@ def drawLineChart(currentYear: int, done: dict, file: str, unknownb: set, unknow
     for p in done:
         names += f"<text class='name {'nameunknown' if p in unknownb | unknownd else ''}'>" \
                  f"<tspan dx='{pt2px(2):.3f}' dy='{pt2px(1):.3f}' x={done[p]['b'] * w / widx:.3f} y={done[p]['y']:.3f}>" \
-                 f"{people[p]['first']} {people[p].get('last', '')}</tspan></text>"
+                 f"{people[p].get('name', {}).get('first')} {people[p].get('last', '')}</tspan></text>"
     for y in range(math.floor(minx), math.ceil(maxx) + 1):
         if not y % 100:
             years += f"<path d='M {y * w / widx:.0f},{maxy} V {miny}' class='year' id='{y}'/>"
@@ -1450,7 +1450,7 @@ def announce(p, p0):
                     a += f"{people[i]['shortname']} begat {people[d[n + 1]]['shortname']}.\n"
             else:
                 a += f"{people[i]['shortname']} begat {people[d[n + 1]]['shortname']}.\n"
-        a += f"{people[p]['first']} was my {'great-' * (len(d) - 2)}grand{'father' if people[p]['gender'] == 'M' else 'mother'}."
+        a += f"{people[p].get('name', {}).get('first')} was my {'great-' * (len(d) - 2)}grand{'father' if people[p]['gender'] == 'M' else 'mother'}."
         if people[p]['buried']:
             a += f"\n{'He' if people[p]['gender'] == 'M' else 'She'} is buried in {people[p]['buried']['cemetery']}."
         print(a)
@@ -1728,43 +1728,15 @@ def begats(p: str, p0: str) -> str | list[str]:
         begat.append('')
         for j, person in enumerate(d):
             if j == 0:
-                begat[i] += f'{people[person]["first"]} {people[person]["last"]} begat {people[d[j + 1]]["first"]}'
+                begat[i] += f'{people[person].get("name", {}).get("first")} {people[person].get("name", {}).get("last")} begat {people[d[j + 1]].get("name", {}).get("first")}'
             elif j < len(d) - 1:
-                if people[person]["last"] == people[d[j + 1]]["last"]:
-                    begat[i] += f', {people[person]["first"]} begat {people[d[j + 1]]["first"]}'
+                if people[person].get("name", {}).get("last") == people[d[j + 1]].get("name", {}).get("last"):
+                    begat[i] += f', {people[person].get("name", {}).get("first")} begat {people[d[j + 1]].get("name", {}).get("first")}'
                 else:
                     begat[
-                        i] += f', {people[person]["first"]} begat {people[d[j + 1]]["first"]} {people[d[j + 1]]["last"]}'
+                        i] += f', {people[person].get("name", {}).get("first")} begat {people[d[j + 1]].get("name", {}).get("first")} {people[d[j + 1]].get("name", {}).get("last")}'
         begat[i] += '.'
     return begat
 
 
-# for row in rawData:
-#     if 'birthdate' in row:
-#         row.setdefault('birth', {})
-#         row['birth'].update({'date': row['birthdate']})
-#         del row['birthdate']
-#     if 'birthplace' in row:
-#         row.setdefault('birth', {})
-#         row['birth'].update({'place': row['birthplace']})
-#         del row['birthplace']
-#     if 'deathdate' in row:
-#         row.setdefault('death', {})
-#         row['death'].update({'date': row['deathdate']})
-#         del row['deathdate']
-#     if 'deathplace' in row:
-#         row.setdefault('death', {})
-#         row['death'].update({'place': row['deathplace']})
-#         del row['deathplace']
-#     if 'marriagedate' in row:
-#         row.setdefault('marriage', {})
-#         for s in row['marriagedate']:
-#             row['marriage'].setdefault(s, {})
-#             row['marriage'][s].update({'date': row['marriagedate'][s]})
-#         del row['marriagedate']
-#     if 'marriageplace' in row:
-#         row.setdefault('marriage', {})
-#         for s in row['marriageplace']:
-#             row['marriage'].setdefault(s, {})
-#             row['marriage'][s].update({'place': row['marriageplace'][s]})
-#         del row['marriageplace']
+
