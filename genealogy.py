@@ -23,7 +23,7 @@ def isDateFull(d: Union[str, int]) -> bool:
 
 def importFamily(familyName: str, p0: str):
     people.clear()
-    with open(fr"{os.getcwd()}\{familyName}.json", 'r') as f:
+    with open(fr"{os.getcwd()}\{familyName}.tree.json", 'r') as f:
         rawData = json.load(f)
     if not runLinter(rawData):
         raise KeyError
@@ -75,12 +75,13 @@ def importFamily(familyName: str, p0: str):
                         continue
                     if c not in people:
                         people.update({c: {
-                            'first': re.sub(f"([mf]-)?(\D+)({people[p].get('last', '').lower()})?\d*", '\g<2>',
+                            'first': re.sub(fr"([mf]-)?(\D+)({people[p].get('last', '').lower()})?\d*", r'\g<2>',
                                             c).capitalize(),
                             'last': people[p].get('last', ''),
-                            'gender': re.sub(f"([mf]?)-?(\w+)", '\g<1>', c)
+                            'gender': re.sub(fr"([mf]?)-?(\w+)", r'\g<1>', c)
                         }})
-                        people[c]['shortname'] = joinName(people[c].get("name", {}).get("first"), people[c].get("name", {}).get("last"))
+                        people[c]['shortname'] = joinName(people[c].get("name", {}).get("first"),
+                                                          people[c].get("name", {}).get("last"))
                     people[c]['father'] = p
                     people[c]['mother'] = s
         if people[p]['gender'] == 'F':
@@ -141,13 +142,19 @@ def printIndividualEntry(p: str, p0: str) -> str:
     spouseDetails = generateSpouse(person, p0)
     history = person.get('history', None)
     childrenDetails = getChildrenDetails(person, p0)
-    burialDetails = getBurialDetails(person)
+    spouses = sorted(filter(lambda s: s != '', person.get('spouse', [])), key=lambda x: getMarriageYear(person, x))
+    burialDetails: list[str] = [getBurialDetails(person)] + [getBurialDetails(people[s]) for s in spouses]
+    burialDetails = list(filter(lambda b: b != '', burialDetails))
+    if len(set(burialDetails)) != 1:
+        for i, (b, q) in enumerate(zip(burialDetails, [p] + spouses)):
+            burialDetails[i] = f"{b} ({people[q].get('name', {}).get('first')})"
+    burialDetails = list(set(burialDetails))
     sources = getSources(person)
 
     return buildParagraphs(
         buildParagraph(
             buildSentence(
-                f"\individual{ancestor}{{{p}}}{{{buildSentence(title, joinComma(name, antonym))}{nameIndex}}}",
+                fr"\individual{ancestor}{{{p}}}{{{buildSentence(title, joinComma(name, antonym))}{nameIndex}}}",
                 accolades,
                 patriline,
                 vitals
@@ -156,7 +163,7 @@ def printIndividualEntry(p: str, p0: str) -> str:
             history
         ),
         childrenDetails,
-        burialDetails,
+        buildParagraphs(*burialDetails),
         sources
     )
 
@@ -397,7 +404,7 @@ def getNameIndex(person: Dict) -> str:
     firstName = person.get("name", {}).get("first")
     middleName = person.get("name", {}).get("middle")
     lastName = person.get("name", {}).get("last")
-    nameIndex = f"\index{{{lastName or ''}!{joinName(firstName, middleName)}}}"
+    nameIndex = fr"\index{{{lastName or ''}!{joinName(firstName, middleName)}}}"
     return nameIndex
 
 
@@ -608,11 +615,13 @@ def box_dim(N, f=2, W=48, m=1):
 
 
 def generate_genealogy_tree(root, main=False):
-    tree = {root: "parent{g{" + f"{people[root].get('name', {}).get('first')} {people[root].get('name', {}).get('last') or '---'}" + "}}"}
+    tree = {
+        root: "parent{g{" + f"{people[root].get('name', {}).get('first')} {people[root].get('name', {}).get('last') or '---'}" + "}}"}
     main_people = set()
     for g in generations:
         for p in g:
-            tree.update({p: "parent{g{" + f"{people[p].get('name', {}).get('first')} {people[p].get('name', {}).get('last') or '---'}" + "}}"})
+            tree.update({
+                p: "parent{g{" + f"{people[p].get('name', {}).get('first')} {people[p].get('name', {}).get('last') or '---'}" + "}}"})
             main_people.add(p)
     done = set()
     collapsed_tree = tree.copy()
@@ -1728,15 +1737,14 @@ def begats(p: str, p0: str) -> str | list[str]:
         begat.append('')
         for j, person in enumerate(d):
             if j == 0:
-                begat[i] += f'{people[person].get("name", {}).get("first")} {people[person].get("name", {}).get("last")} begat {people[d[j + 1]].get("name", {}).get("first")}'
+                begat[
+                    i] += f'{people[person].get("name", {}).get("first")} {people[person].get("name", {}).get("last")} begat {people[d[j + 1]].get("name", {}).get("first")}'
             elif j < len(d) - 1:
                 if people[person].get("name", {}).get("last") == people[d[j + 1]].get("name", {}).get("last"):
-                    begat[i] += f', {people[person].get("name", {}).get("first")} begat {people[d[j + 1]].get("name", {}).get("first")}'
+                    begat[
+                        i] += f', {people[person].get("name", {}).get("first")} begat {people[d[j + 1]].get("name", {}).get("first")}'
                 else:
                     begat[
                         i] += f', {people[person].get("name", {}).get("first")} begat {people[d[j + 1]].get("name", {}).get("first")} {people[d[j + 1]].get("name", {}).get("last")}'
         begat[i] += '.'
     return begat
-
-
-
