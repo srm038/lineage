@@ -1,4 +1,4 @@
 *.*
-!*.py
-!.config.json
+!**/*.py
+!**/*.config.json
 !requirements.txt

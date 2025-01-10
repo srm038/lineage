@@ -34,7 +34,7 @@ def importFamily(familyName: str, p0: str):
     :return: None
     """
     people.clear()
-    with open(rf"{os.getcwd()}\{familyName}.tree.json", "r") as f:
+    with open(rf"{os.getcwd()}\data\{familyName}.tree.json", "r") as f:
         rawData = json.load(f)
     if not runLinter(rawData):
         raise KeyError
@@ -574,7 +574,7 @@ def getMarriageYear(person: Dict, s: str) -> int:
 
 def generateTex(familyName: str, p0: str):
     importFamily(familyName, p0)
-    with open(rf"{os.getcwd()}\{familyName}_generated.tex", "w") as f:
+    with open(rf"{os.getcwd()}\out\{familyName}_generated.tex", "w") as f:
         writeTitle(f, familyName)
         writeGenerations(f, p0)
     # h_tree(file, p0)
@@ -932,7 +932,7 @@ def horizontalCompactionTwig(
 
 
 def drawHTree(area, descendants, file, initialPositions, size, p0):
-    with open(f"{file}-H.svg", "r") as f:
+    with open(rf"{os.getcwd()}\out\{file}-H.svg", "r") as f:
         svg = bs4.BeautifulSoup(f, "xml")
     treeStyle = f"fill:burlywood;"
     pStyle = f"stroke:black;stroke-width:2px;"
@@ -979,7 +979,7 @@ def drawHTree(area, descendants, file, initialPositions, size, p0):
             "viewBox": f"{minx - size / 2} {miny - size / 2} {maxx - minx + size} {maxy - miny + size}"
         }
     )
-    with open(f"{file}-H.svg", "w") as f:
+    with open(rf"{os.getcwd()}\out\{file}-H.svg", "w") as f:
         f.write(svg.prettify())
 
 
@@ -1364,7 +1364,7 @@ def drawLineChart(
     w = 18 * 96
     miny = min(done[p]["y"] for p in done) - 10
     maxy = max(done[p]["y"] for p in done) + 10
-    with open(rf"{os.getcwd()}\{file}-lines.svg", "r") as f:
+    with open(rf"{os.getcwd()}\out\{file}-lines.svg", "r") as f:
         svg = bs4.BeautifulSoup(f, "xml")
     lines = ""
     begats = ""
@@ -1396,14 +1396,14 @@ def drawLineChart(
             if getState(p, "death"):
                 flags += (
                     f"<image x='{(done[p]['d'] + 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' "
-                    f"height='9pt' href='flags/{getState(p, 'death').lower()}.png'/>"
+                    f"height='9pt' href='../flags/{getState(p, 'death').lower()}.png'/>"
                 )
         elif p not in unknownb and p in unknownd:
             p_class = "unknownd"
             if getState(p, "birth"):
                 flags += (
                     f"<image x='{(done[p]['b'] - 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' "
-                    f"height='9pt' href='flags/{getState(p, 'birth').lower()}.png' style='transform: translateX(-15.72pt)'/>"
+                    f"height='9pt' href='../flags/{getState(p, 'birth').lower()}.png' style='transform: translateX(-15.72pt)'/>"
                 )
         elif p in unknownb and p in unknownd:
             p_class = "unknownbd"
@@ -1412,12 +1412,12 @@ def drawLineChart(
             if getState(p, "death"):
                 flags += (
                     f"<image x='{(done[p]['d'] + 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' "
-                    f"height='9pt' href='flags/{getState(p, 'death').lower()}.png'/>"
+                    f"height='9pt' href='../flags/{getState(p, 'death').lower()}.png'/>"
                 )
             if getState(p, "birth"):
                 flags += (
                     f"<image x='{(done[p]['b'] - 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' "
-                    f"height='9pt' href='flags/{getState(p, 'birth').lower()}.png' style='transform: translateX(-15.72pt)'/>"
+                    f"height='9pt' href='../flags/{getState(p, 'birth').lower()}.png' style='transform: translateX(-15.72pt)'/>"
                 )
         lines += (
             f"<rect x='{done[p]['b'] * w / widx:.3f}' y='{addPt(p, 'y', -5):.3f}' "
@@ -1441,7 +1441,7 @@ def drawLineChart(
                 continue
             flags += (
                 f"<image x='{getMarriageYear(people[p], s) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' "
-                f"height='9pt' href='flags/{getState(p, 'marriage')[s].lower()}.png' style='transform: translateX(-7.36pt)'/>"
+                f"height='9pt' href='../flags/{getState(p, 'marriage')[s].lower()}.png' style='transform: translateX(-7.36pt)'/>"
             )
     for p in done:
         names += (
@@ -1494,7 +1494,7 @@ def drawLineChart(
         ".nameunknown {fill:#333}"
         ".year {stroke-dasharray:5pt; stroke-width:2pt; stroke:#ccc}"
     )
-    with open(rf"{os.getcwd()}\{file}-lines.svg", "w") as f:
+    with open(rf"{os.getcwd()}\out\{file}-lines.svg", "w") as f:
         f.write(svg.prettify())
 
 
@@ -1868,7 +1868,7 @@ def drawZegelchart(p: str):
     xWidth = xMax - xMin
     yMin = 0
     yMax = len(descendants) * 2
-    with open(rf"{os.getcwd()}\{p}-zegelchart.svg", "r") as f:
+    with open(rf"{os.getcwd()}\out\{p}-zegelchart.svg", "r") as f:
         svg = bs4.BeautifulSoup(f, "xml")
     lives = ""
     lines = ""
@@ -1915,7 +1915,7 @@ def drawZegelchart(p: str):
             "viewBox": f"{xMin - 10:.3f} {yMin - 10:.3f} {xWidth + 20:.3f} {(yMax - yMin) * toPt(10) + 10:.3f}"
         }
     )
-    with open(rf"{os.getcwd()}\{p}-zegelchart.svg", "w") as f:
+    with open(rf"{os.getcwd()}\out\{p}-zegelchart.svg", "w") as f:
         f.write(svg.prettify())
 
 
@@ -2106,7 +2106,7 @@ def distributeRadialChart(radialChart):
 
 
 def drawRadialChart(file, radialChart):
-    with open(f"{file}-radial.svg", "r") as f:
+    with open(rf"{os.getcwd()}\out\{file}-radial.svg", "r") as f:
         svg = bs4.BeautifulSoup(f, "xml")
     paths = ""
     xMin, xMax, yMin, yMax = 0, 0, 0, 0
@@ -2133,7 +2133,7 @@ def drawRadialChart(file, radialChart):
             "height": f"{0 - yMin + 20:.3f}",
         }
     )
-    with open(rf"{os.getcwd()}\{file}-radial.svg", "w") as f:
+    with open(rf"{os.getcwd()}\out\{file}-radial.svg", "w") as f:
         f.write(svg.prettify())
 
 
