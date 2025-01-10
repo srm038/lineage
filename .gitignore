@@ -2,3 +2,4 @@
 !**/*.py
 !**/*.config.json
 !requirements.txt
+!README.md
