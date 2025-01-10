@@ -139,15 +139,15 @@ def runLinter(rawData: Dict) -> bool:
 
 def inFullTree(p: str, p0: str) -> bool:
     """
-    Check if a person is in the full tree
+    Check if a person is related to the root person
     :param p: the person to check
     :param p0: the root person
-    :return: True if the person is in the full tree, False otherwise
+    :return: True if the person is related, False otherwise
     """
     return p in getAncestors(p0) or p == p0
 
 
-def getLineage(p: str, parent: str) -> str:
+def getLineage(p: str, parent: Literal["father", "mother"]) -> str:
     """
     Get the lineage of a person
     :param p: the person to get the lineage of
@@ -167,13 +167,25 @@ def getLineage(p: str, parent: str) -> str:
     return line
 
 
-def getParent(p: str, parent: str) -> Union[str, None]:
+def getParent(p: str, parent: Literal["father", "mother"]) -> Union[str, None]:
+    """
+    Get the parent of a person
+    :param p: the person to get the parent of
+    :param parent: one of "father", "mother"
+    :return: the parent of the person
+    """
     if parent not in ["father", "mother"]:
         raise KeyError(f"{parent} is not a proper parent")
     return people.get(p, {}).get(parent)
 
 
 def printIndividualEntry(p: str, p0: str) -> str:
+    """
+    Print an individual TeX entry for a person
+    :param p: the person to print the entry for
+    :param p0: the root person
+    :return: the individual entry for the person
+    """
     # child_check(p)
     person = people[p]
     ancestor = getAncestorTag(person)
