@@ -83,11 +83,16 @@ def importFamily(familyName: str, p0: str):
     for p in list(people):
         if people[p]["gender"] == "M":
             for s in people[p].get("children", dict()):
-                for c in people[p]["children"][s]:
+                for c in list(people[p]["children"][s]):
                     if not c:
                         continue
                     if c not in people:
-                        people.update({c: generateFromShorthand(c, p)})
+                        newPerson = generateFromShorthand(c, p)
+                        newId = newPerson["id"]
+                        people[newId] = newPerson
+                        people[p]["children"][s].remove(c)
+                        people[p]["children"][s].add(newId)
+                        c = newId
                     people[c]["father"] = p
                     people[c]["mother"] = s
         if people[p]["gender"] == "F":
@@ -525,6 +530,10 @@ def ancestors_by_age():
 
 
 def generateID(name: dict) -> dict:
+    """
+    Generate an ID for a person
+    :param name: the name of the person
+    :return: an ID"""
     nameID = (name.get("first", "") + name.get("last", "")).replace(" ", "").lower()
     nameID = nameID.replace(".", "").replace("'", "")
     name.update({"id": generateIDn(nameID)})
@@ -532,6 +541,10 @@ def generateID(name: dict) -> dict:
 
 
 def generateIDn(nameID: str) -> str:
+    """
+    Generate a unique ID for a person
+    :param nameID: the name of the person
+    :return: a unique ID"""
     i = 1
     while True:
         if (nameIDi := nameID + str(i) if i > 1 else nameID) not in people:
@@ -628,21 +641,18 @@ def generateFromShorthand(c: str, p: str) -> Dict:
     :param p: the parent
     :return: the person
     """
-    c = {
+    gender, first, last, birth = (c.split("|") + [""] * 4)[:4]
+    first = first.capitalize()
+    last = last.capitalize() if last else people[p].get("name", {}).get("last", "")
+    newPerson = {
+        "id": generateIDn(f"{first.lower()}{last.lower()}"),
         "name": {
-            "first": re.sub(
-                rf"([mf]-)?(\D+)({people[p].get("name", {}).get('last', '').lower()})?\d*",
-                r"\g<2>",
-                c,
-            ).capitalize(),
-            "last": people[p].get("name", {}).get("last", ""),
+            "first": first,
+            "last": last,
         },
-        "gender": re.sub(rf"([mf]?)-?(\w+)", r"\g<1>", c),
+        "gender": gender,
     }
+    if birth:
+        newPerson["birth"] = {"date": int(birth)}
 
-    c["shortname"] = joinName(
-        c.get("name", {}).get("first"),
-        c.get("name", {}).get("last"),
-    )
-
-    return c
+    return newPerson
