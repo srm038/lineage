@@ -87,28 +87,7 @@ def importFamily(familyName: str, p0: str):
                     if not c:
                         continue
                     if c not in people:
-                        people.update(
-                            {
-                                c: {
-                                    "name": {
-                                        "first": re.sub(
-                                            rf"([mf]-)?(\D+)({people[p].get("name",
-                                                                            {}).get('last', '').lower()})?\d*",
-                                            r"\g<2>",
-                                            c,
-                                        ).capitalize(),
-                                        "last": people[p]
-                                        .get("name", {})
-                                        .get("last", ""),
-                                    },
-                                    "gender": re.sub(rf"([mf]?)-?(\w+)", r"\g<1>", c),
-                                }
-                            }
-                        )
-                        people[c]["shortname"] = joinName(
-                            people[c].get("name", {}).get("first"),
-                            people[c].get("name", {}).get("last"),
-                        )
+                        people.update({c: generateFromShorthand(c, p)})
                     people[c]["father"] = p
                     people[c]["mother"] = s
         if people[p]["gender"] == "F":
@@ -640,3 +619,30 @@ def getFullName(person: Dict) -> str:
 def joinName(*name: iter) -> str:
     joinedName = " ".join(filter(None, name))
     return joinedName
+
+
+def generateFromShorthand(c: str, p: str) -> Dict:
+    """
+    Generate a person from a shorthand
+    :param c: the shorthand
+    :param p: the parent
+    :return: the person
+    """
+    c = {
+        "name": {
+            "first": re.sub(
+                rf"([mf]-)?(\D+)({people[p].get("name", {}).get('last', '').lower()})?\d*",
+                r"\g<2>",
+                c,
+            ).capitalize(),
+            "last": people[p].get("name", {}).get("last", ""),
+        },
+        "gender": re.sub(rf"([mf]?)-?(\w+)", r"\g<1>", c),
+    }
+
+    c["shortname"] = joinName(
+        c.get("name", {}).get("first"),
+        c.get("name", {}).get("last"),
+    )
+
+    return c
