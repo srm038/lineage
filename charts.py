@@ -743,7 +743,7 @@ def drawLineChart(
                     6 * w / widx:.3f}' height='{pt2px(10):.3f}' id='{p}-d'"
                 f"class='unknownda' />"
             )
-        for s in people[p].get("marriage", []):
+        for s in people[p].get("marriage", {}):
             if not getMarriageYear(people[p], s):
                 continue
             flags += (

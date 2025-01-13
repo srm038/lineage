@@ -8,6 +8,7 @@ import pluscodes
 from requests_cache import Optional
 
 from config import people, generations
+from types_node import Marriage, Person
 
 
 def isDateFull(d: Union[str, int]) -> bool:
@@ -49,9 +50,9 @@ def importFamily(familyName: str, p0: str):
         people.update({pid: {k: v for k, v in p.items() if k != "id"}})
         person = people[pid]
         person["gender"] = person["gender"].upper()
-        person.setdefault("marriage", dict())
+        person.setdefault("marriage", {})
         person["spouse"] = list()
-        for s in person.get("marriage", {}):
+        for s in person["marriage"]:
             if s:
                 person["spouse"].append(s)
             if "children" in person["marriage"][s]:
@@ -66,13 +67,13 @@ def importFamily(familyName: str, p0: str):
                 continue
             person[i] = person[i].strip()
             person[i] = person[i].replace(":", '\\"')
-        if "shortname" not in person:
-            person["shortname"] = joinName(
+        if "shortname" not in person["name"]:
+            person["name"]["shortname"] = joinName(
                 person.get("name", {}).get("first"), person.get("name", {}).get("last")
             )
     # process children
     for p in list(people):
-        for s in people[p].get("marriage", dict()):
+        for s in people[p].get("marriage", {}):
             for c in people[p]["marriage"][s].get("children", set()):
                 if not c:
                     people[p]["marriage"][s]["children"].remove(c)
@@ -110,7 +111,7 @@ def importFamily(familyName: str, p0: str):
                     }
                 if s in people:
                     people[s]["spouse"] = p
-                    people[s].setdefault("marriage", dict())
+                    people[s].setdefault("marriage", {})
                     people[s]["marriage"].update({p: people[p]["marriage"][s]})
                     people[s]["child"] = {
                         c
@@ -159,11 +160,11 @@ def getParent(p: str, parent: Literal["father", "mother"]) -> Union[str, None]:
     return people.get(p, {}).get(parent)
 
 
-def getTitle(person: Dict) -> str:
+def getTitle(person: Person) -> str:
     return person.get("title", "")
 
 
-def getAntonym(person: Dict) -> str:
+def getAntonym(person: Person) -> str:
     return person.get("antonym", "")
 
 
@@ -219,10 +220,10 @@ def getAncestors(p):
     return ancestors
 
 
-def child_check(p):
-    for s in people[p].get("marriage", dict()):
+def childCheck(p):
+    for s in people[p].get("marriage", {}):
         for c in people[p]["marriage"][s].get("children", set()):
-            if people.get(c, dict()).get("generation", 100) >= people[p].get(
+            if people.get(c, Person).get("generation", 100) >= people[p].get(
                 "generation", 0
             ):
                 warnings.warn(f"generation issue: {p} and {c}", Warning)
@@ -240,10 +241,10 @@ def getVitalYear(p: str, vital: Literal["birth", "death"]) -> Optional[int]:
     return int(date[-1])
 
 
-def getMarriageYear(person: Dict, s: str) -> int:
+def getMarriageYear(person: Person, s: str) -> int:
     if not s:
         return 0
-    date: Union[int, str] = person.get("marriage", {}).get(s, {}).get("date", 0)
+    date: Union[int, str] = person.get("marriage", {}).get(s, Marriage).get("date", 0)
     if not date:
         return 0
     if type(date) == int:
@@ -321,7 +322,7 @@ def unsourced(g=None):
             if people[p]["gender"] == "M" and not people[p]["sources"]:
                 print(
                     p,
-                    people[p]["shortname"],
+                    people[p]["name"]["shortname"],
                     getVitalYear(p, "birth"),
                     people[p]["note"],
                 )
@@ -330,7 +331,7 @@ def unsourced(g=None):
     # return
 
 
-def generation_count(children=False):
+def generationCount(children=False):
     if children:
         for g in generations:
             N = len(
@@ -341,11 +342,11 @@ def generation_count(children=False):
                                 *(
                                     [
                                         people[p]["marriage"]
-                                        .get(s, dict())
+                                        .get(s, Marriage)
                                         .get("children", set())
-                                        for s in people[p].get("marriage", dict())
+                                        for s in people[p].get("marriage", {})
                                     ]
-                                    if people[p].get("marriage", dict())
+                                    if people[p].get("marriage", {})
                                     else [set()]
                                 )
                             )
@@ -466,7 +467,7 @@ def birthdays(month, p0):
 def announce(p, p0):
     for d in descent(p, p0):
         a = f"On {people[p].get('birth', {}).get('date')}, {
-            people[p]['shortname']} was born"
+            people[p]['name']['shortname']} was born"
         if people[p]["birthplace"]:
             a += f" in {people[p]['birthplace']}.{' ' + people[p]
                                                   ['history'] if people[p]['history'] else ''}\n"
@@ -485,14 +486,14 @@ def announce(p, p0):
                         else people[i]["spouse"]
                     )
                 if s:
-                    a += f"{people[i]['shortname']} married {people[s]
-                                                             ['shortname']} and begat {people[d[n + 1]]['shortname']}.\n"
+                    a += f"{people[i]['name']['shortname']} married {people[s]['name']
+                                                             ['shortname']} and begat {people[d[n + 1]]['name']['shortname']}.\n"
                 else:
-                    a += f"{people[i]['shortname']
+                    a += f"{people[i]['name']['shortname']
                             } begat {people[d[n + 1]]['shortname']}.\n"
             else:
-                a += f"{people[i]['shortname']} begat {
-                    people[d[n + 1]]['shortname']}.\n"
+                a += f"{people[i]['name']['shortname']} begat {
+                    people[d[n + 1]]['name']['shortname']}.\n"
         a += f"{people[p].get('name', {}).get('first')} was my {'great-' * (
             len(d) - 2)}grand{'father' if people[p]['gender'] == 'M' else 'mother'}."
         if people[p]["buried"]:
@@ -546,7 +547,8 @@ def ancestors_by_age():
         byAge, key=lambda p: getVitalYear(p, "death") - getVitalYear(p, "birth")
     ):
         print(
-            people[p]["shortname"], getVitalYear(p, "death") - getVitalYear(p, "birth")
+            people[p]["name"]["shortname"],
+            getVitalYear(p, "death") - getVitalYear(p, "birth"),
         )
 
 
@@ -583,10 +585,10 @@ def getSpouse(p: str) -> List[str]:
 
 def getChildren(p: str, spouse: str):
     children = list(
-        people[p].get("marriage", dict()).get(spouse, dict()).get("children", set())
-        | people.get(spouse, dict())
-        .get("marriage", dict())
-        .get(p, dict())
+        people[p].get("marriage", {}).get(spouse, Marriage).get("children", set())
+        | people.get(spouse, Marriage)
+        .get("marriage", {})
+        .get(p, Marriage)
         .get("children", set())
     )
     children.sort(
@@ -645,7 +647,7 @@ def begats(p: str, p0: str) -> str | list[str]:
     return begat
 
 
-def getFullName(person: Dict) -> str:
+def getFullName(person: Person) -> str:
     firstName = person.get("name", {}).get("first")
     middleName = person.get("name", {}).get("middle")
     lastName = person.get("name", {}).get("last")
@@ -667,7 +669,7 @@ def parseDate(date: Union[str, int]) -> Union[str, int]:
     return int(date[0])
 
 
-def generateFromShorthand(c: str, p: str = "") -> Dict:
+def generateFromShorthand(c: str, p: str = "") -> Person:
     """
     Generate a person from a shorthand
     :param c: the shorthand
@@ -681,13 +683,13 @@ def generateFromShorthand(c: str, p: str = "") -> Dict:
     elif p:
         last = people[p].get("name", {}).get("last", "")
 
-    newPerson = {
+    newPerson: Person = {
         "id": generateIDn(f"{first.lower()}{last.lower()}"),
         "name": {
             "first": first,
+            "shortname": joinName(first, last),
         },
         "gender": gender,
-        "shortname": joinName(first, last),
     }
     if last:
         newPerson["name"]["last"] = last

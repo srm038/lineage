@@ -2,6 +2,7 @@ import os
 from typing import Dict, Literal, Set, Union
 import warnings
 
+from types_node import Marriage, Person
 from utils import (
     getAntonym,
     getFullName,
@@ -98,7 +99,7 @@ def printIndividualEntry(p: str, p0: str) -> str:
     )
 
 
-def getSources(person: Dict) -> str:
+def getSources(person: Person) -> str:
     if not person.get("sources"):
         return ""
     allSources = person.get("sources")
@@ -110,7 +111,7 @@ def getSources(person: Dict) -> str:
     return buildSentence("\\begin{source}", *sources, "\\end{source}")
 
 
-def getBurialDetails(person: Dict) -> str:
+def getBurialDetails(person: Person) -> str:
     if person.get("buried"):
         return (
             f"\\buried \\href{{{'http://plus.codes/' +
@@ -120,21 +121,19 @@ def getBurialDetails(person: Dict) -> str:
     return ""
 
 
-def getChildrenDetails(person: Dict, p0: str) -> str:
+def getChildrenDetails(person: Person, p0: str) -> str:
     childrens = []
-    for s in person.get("marriage", dict()):
-        if not s:
-            continue
-        parentDetails = getParentDetails(person, s) + "\n"
+    parentDetails = ""
+    for s in person.get("marriage", {}):
+        if s:
+            parentDetails = getParentDetails(person, s) + "\n"
         children = []
         for c in sorted(
             person["marriage"][s].get("children", []),
             key=lambda y: getVitalYear(y, "birth") or 3000,
         ):
             if c not in people:
-                warnings.warn(
-                    f"{c} doesn't have an entry", Warning
-                )
+                warnings.warn(f"{c} doesn't have an entry", Warning)
                 continue
             childDetail = getChildDetails(person, c, p0)
             children += [childDetail]
@@ -144,7 +143,7 @@ def getChildrenDetails(person: Dict, p0: str) -> str:
     return "\n".join(childrens)
 
 
-def getChildDetails(person: Dict, c: str, p0: str) -> str:
+def getChildDetails(person: Person, c: str, p0: str) -> str:
     mainLine = getMainLine(person, c)
     title = getTitle(people[c])
     antonym = getAntonym(people[c])
@@ -153,7 +152,7 @@ def getChildDetails(person: Dict, c: str, p0: str) -> str:
     return (
         f"\\childlist{mainLine}{{{c if mainLine else ''}}}"
         f"{{{buildSentence(title, joinComma(
-            people[c]['shortname'], antonym))}}}"
+            people[c]['name']['shortname'], antonym))}}}"
         f"{{{buildParagraph(birth, marriage)}}}"
     )
 
@@ -176,21 +175,23 @@ def childBirth(c: str) -> str:
     return ""
 
 
-def getMainLine(person: Dict, c: str) -> str:
+def getMainLine(person: Person, c: str) -> str:
     if c in person.get("child", set()):
         return "[+]"
     return ""
 
 
-def getParentDetails(person: Dict, s: str) -> str:
+def getParentDetails(person: Person, s: str) -> str:
     if not s:
-        return f"{person['shortname']}\\children"
+        return f"{person['name']['shortname']}\\children"
     if s not in people:
-        return f"{person['shortname']} and {s}\\children"
-    return f"{person['shortname']} and {people[s]['shortname']}\\children"
+        return f"{person['name']['shortname']} and {s}\\children"
+    return (
+        f"{person['name']['shortname']} and {people[s]['name']['shortname']}\\children"
+    )
 
 
-def generateSpouse(person: Dict, p0: str):
+def generateSpouse(person: Person, p0: str):
     spouse: list = person.get("spouse", [])
     if type(spouse) == str:
         spouse: list = [spouse]
@@ -231,19 +232,19 @@ def getSpouseParents(s: str, p0: str) -> str:
 
 def getShortNamelink(p: str, p0: str) -> str:
     if inFullTree(p, p0):
-        return f"\\namelink{{{p}}}{{{people[p]['shortname']}}}"
-    return f"{people[p]['shortname']}"
+        return f"\\namelink{{{p}}}{{{people[p]['name']['shortname']}}}"
+    return f"{people[p]['name']['shortname']}"
 
 
 def getShortNamelinkBold(p: str, p0: str) -> str:
     if inFullTree(p, p0):
-        return f"\\namelinkbold{{{p}}}{{{people[p]['shortname']}}}"
-    return f"{people[p]['shortname']}"
+        return f"\\namelinkbold{{{p}}}{{{people[p]['name']['shortname']}}}"
+    return f"{people[p]['name']['shortname']}"
 
 
 def getSpouseName(s: str, p0: str, includePatriline: bool = True) -> str:
     patriline = printLineage(s, "father")
-    shortName = people[s]["shortname"]
+    shortName = people[s]["name"]["shortname"]
     if inFullTree(s, p0):
         if not people[s].get("father") and not people[s].get("mother"):
             return f"\\textbf{{{shortName}}}{getNameIndex(people[s])}"
@@ -260,7 +261,7 @@ def getSpouseNumber(s: str, spouse: iter) -> Union[int, str]:
     return ""
 
 
-def getPronoun(person: Dict) -> str:
+def getPronoun(person: Person) -> str:
     return {"M": "He"}.get(person["gender"], "She")
 
 
@@ -277,7 +278,7 @@ def buildSentence(*phrases: iter) -> str:
     return " ".join(filter(None, phrases))
 
 
-def getAccolades(person: Dict) -> str:
+def getAccolades(person: Person) -> str:
     accolades = []
     for a in ["army", "mason"]:
         if person.get(a):
@@ -296,7 +297,7 @@ def combineVitals(birth: str, death: str, parents: str = "") -> str:
     return vitals
 
 
-def combineDatePlace(person: Dict, vital: str) -> str:
+def combineDatePlace(person: Person, vital: str) -> str:
     if vital not in ["birth", "death", "marriage"]:
         raise KeyError(f"{vital} is not a vital statistic")
     vitalDate: str = person.get(vital, {}).get("date")
@@ -311,9 +312,9 @@ def combineDatePlace(person: Dict, vital: str) -> str:
     return joinComma(date, place)
 
 
-def combineMarriageDatePlace(person: Dict, s: str) -> str:
-    vitalDate = person.get("marriage", {}).get(s, {}).get("date")
-    vitalPlace = person.get("marriage", {}).get(s, {}).get("place")
+def combineMarriageDatePlace(person: Person, s: str) -> str:
+    vitalDate = person.get("marriage", {}).get(s, Marriage).get("date")
+    vitalPlace = person.get("marriage", {}).get(s, Marriage).get("place")
     date: str = ""
     place: str = ""
     if vitalDate:
@@ -335,7 +336,7 @@ def printLineage(p, parent):
     return f"({patriline})"
 
 
-def getNameIndex(person: Dict) -> str:
+def getNameIndex(person: Person) -> str:
     firstName = person.get("name", {}).get("first")
     middleName = person.get("name", {}).get("middle")
     lastName = person.get("name", {}).get("last")
@@ -344,7 +345,7 @@ def getNameIndex(person: Dict) -> str:
     return nameIndex
 
 
-def getAncestorTag(person: Dict) -> str:
+def getAncestorTag(person: Person) -> str:
     if not person.get("father"):
         return "[p]"
     return ""

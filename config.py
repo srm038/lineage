@@ -1,5 +1,7 @@
-from typing import List, Set
+from typing import Dict, List, Set
+
+from types_node import Person
 
 
-people = dict()
+people: Dict[str, Person] = dict()
 generations: List[Set] = list()
