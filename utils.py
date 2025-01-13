@@ -1,7 +1,6 @@
 import datetime
 import json
 import os
-import re
 from typing import Dict, List, Literal, Set, Union
 import warnings
 
@@ -22,6 +21,19 @@ def isDateFull(d: Union[str, int]) -> bool:
     return len(d) == 3
 
 
+def loadRawData(familyName: str) -> Dict:
+    """
+    Load the raw data from a JSON file
+    :param familyName: the name of the JSON file
+    :return: the raw data
+    """
+    with open(rf"{os.getcwd()}\data\{familyName}.tree.json", "r") as f:
+        rawData = json.load(f)
+    if not runLinter(rawData):
+        raise KeyError
+    return rawData
+
+
 def importFamily(familyName: str, p0: str):
     """
     Import a family tree from a JSON file
@@ -30,10 +42,7 @@ def importFamily(familyName: str, p0: str):
     :return: None
     """
     people.clear()
-    with open(rf"{os.getcwd()}\data\{familyName}.tree.json", "r") as f:
-        rawData = json.load(f)
-    if not runLinter(rawData):
-        raise KeyError
+    rawData = loadRawData(familyName)
     for p in rawData:
         pid = p["id"]
         people.update({pid: {k: v for k, v in p.items() if k != "id"}})
@@ -634,6 +643,15 @@ def joinName(*name: iter) -> str:
     return joinedName
 
 
+def parseDate(date: Union[str, int]) -> Union[str, int]:
+    if type(date) == int:
+        return date
+    date = date.split(" ")
+    if len(date) > 1:
+        return date
+    return int(date[0])
+
+
 def generateFromShorthand(c: str, p: str) -> Dict:
     """
     Generate a person from a shorthand
@@ -643,7 +661,9 @@ def generateFromShorthand(c: str, p: str) -> Dict:
     """
     gender, first, last, birth = (c.split("|") + [""] * 4)[:4]
     first = first.capitalize()
-    last = last.capitalize() if last else people[p].get("name", {}).get("last", "")
+    last = (
+        last.capitalize() if last else people.get(p, "").get("name", {}).get("last", "")
+    )
     newPerson = {
         "id": generateIDn(f"{first.lower()}{last.lower()}"),
         "name": {
@@ -651,8 +671,9 @@ def generateFromShorthand(c: str, p: str) -> Dict:
             "last": last,
         },
         "gender": gender,
+        "shortname": joinName(first, last),
     }
     if birth:
-        newPerson["birth"] = {"date": int(birth)}
+        newPerson["birth"] = {"date": parseDate(birth)}
 
     return newPerson
