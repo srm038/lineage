@@ -43,15 +43,21 @@ def importFamily(familyName: str, p0: str):
     """
     people.clear()
     rawData = loadRawData(familyName)
+    # initial setup
     for p in rawData:
         pid = p["id"]
         people.update({pid: {k: v for k, v in p.items() if k != "id"}})
         person = people[pid]
         person["gender"] = person["gender"].upper()
-        for i in ["marriagedate", "marriageplace", "children"]:
-            person.setdefault(i, dict())
-        for i in person["children"]:
-            person["children"][i] = set(person["children"][i])
+        person.setdefault("marriage", dict())
+        person["spouse"] = list()
+        for s in person.get("marriage", {}):
+            if s:
+                person["spouse"].append(s)
+            if "children" in person["marriage"][s]:
+                person["marriage"][s]["children"] = set(
+                    person["marriage"][s]["children"]
+                )
         for i in ["child", "sources"]:
             person.setdefault(i, set())
             person[i] = set(person[i])
@@ -64,49 +70,53 @@ def importFamily(familyName: str, p0: str):
             person["shortname"] = joinName(
                 person.get("name", {}).get("first"), person.get("name", {}).get("last")
             )
-        for i in ["marriagedate", "marriageplace", "children"]:
-            spouses = list(person.get(i, set()))
-            person.setdefault("spouse", [])
-            person["spouse"].extend(spouses)
-        person["spouse"] = list(set(person["spouse"]))
-    for p in people:
-        if people[p]["gender"] == "M":
-            for s in people[p].get("spouse", set()):
-                if s in people:
-                    # people[s].setdefault('spouse', list()).extend([p])
-                    people[s]["spouse"] = p
-                    if s in people[p]["marriagedate"]:
-                        people[s]["marriagedate"].update(
-                            {p: people[p]["marriagedate"][s]}
-                        )
-                    if s in people[p]["marriageplace"]:
-                        people[s]["marriageplace"].update(
-                            {p: people[p]["marriageplace"][s]}
-                        )
-            for s in people[p].get("children", dict()):
-                if not s or s not in people:
+    # process children
+    for p in list(people):
+        for s in people[p].get("marriage", dict()):
+            for c in people[p]["marriage"][s].get("children", set()):
+                if not c:
+                    people[p]["marriage"][s]["children"].remove(c)
                     continue
-                for c in people[p].get("child", set()):
-                    if c in people[p]["children"][s]:
-                        people[s]["child"].add(c)
+                if c not in people:
+                    newPerson = generateFromShorthand(c, p)
+                    newId = newPerson["id"]
+                    people[newId] = newPerson
+                    people[p]["marriage"][s]["children"].remove(c)
+                    people[p]["marriage"][s]["children"].add(newId)
+                    c = newId
+                parent = "father" if people[p]["gender"] == "M" else "mother"
+                otherParent = "mother" if parent == "father" else "father"
+                people[c][parent] = p
+                if s and s in people:
+                    people[c][otherParent] = s
+    # reciprocate data to spouses
     for p in list(people):
         if people[p]["gender"] == "M":
-            for s in people[p].get("children", dict()):
-                for c in list(people[p]["children"][s]):
-                    if not c:
-                        continue
-                    if c not in people:
-                        newPerson = generateFromShorthand(c, p)
-                        newId = newPerson["id"]
-                        people[newId] = newPerson
-                        people[p]["children"][s].remove(c)
-                        people[p]["children"][s].add(newId)
-                        c = newId
-                    people[c]["father"] = p
-                    people[c]["mother"] = s
-        if people[p]["gender"] == "F":
-            for c in people[p].get("child", set()):
-                people[c]["mother"] = p
+            for s in list(people[p].get("marriage", {})):
+                if s and s not in people:
+                    newPerson = generateFromShorthand(s)
+                    newId = newPerson["id"]
+                    people[newId] = newPerson
+                    people[p]["marriage"].update({newId: people[p]["marriage"][s]})
+                    people[p]["marriage"].pop(s)
+                    people[p]["spouse"].append(newId)
+                    people[p]["spouse"].remove(s)
+                    people[newId]["marriage"] = {p: people[p]["marriage"][newId]}
+                    people[newId]["spouse"] = p
+                    people[newId]["child"] = {
+                        c
+                        for c in people[p]["child"]
+                        if c in people[newId]["marriage"][p].get("children", set())
+                    }
+                if s in people:
+                    people[s]["spouse"] = p
+                    people[s].setdefault("marriage", dict())
+                    people[s]["marriage"].update({p: people[p]["marriage"][s]})
+                    people[s]["child"] = {
+                        c
+                        for c in people[p]["child"]
+                        if c in people[s]["marriage"][p].get("children", set())
+                    }
     updateGenerationGroups(p0)
 
 
@@ -210,8 +220,8 @@ def getAncestors(p):
 
 
 def child_check(p):
-    for s in people[p]["children"]:
-        for c in people[p]["children"][s]:
+    for s in people[p].get("marriage", dict()):
+        for c in people[p]["marriage"][s].get("children", set()):
             if people.get(c, dict()).get("generation", 100) >= people[p].get(
                 "generation", 0
             ):
@@ -330,10 +340,12 @@ def generation_count(children=False):
                             set.union(
                                 *(
                                     [
-                                        people[p]["children"][s]
-                                        for s in people[p]["children"]
+                                        people[p]["marriage"]
+                                        .get(s, dict())
+                                        .get("children", set())
+                                        for s in people[p].get("marriage", dict())
                                     ]
-                                    if people[p]["children"]
+                                    if people[p].get("marriage", dict())
                                     else [set()]
                                 )
                             )
@@ -571,8 +583,11 @@ def getSpouse(p: str) -> List[str]:
 
 def getChildren(p: str, spouse: str):
     children = list(
-        people[p]["children"].get(spouse, set())
-        | people.get(spouse, dict()).get("children", dict()).get(p, set())
+        people[p].get("marriage", dict()).get(spouse, dict()).get("children", set())
+        | people.get(spouse, dict())
+        .get("marriage", dict())
+        .get(p, dict())
+        .get("children", set())
     )
     children.sort(
         key=lambda c: (getVitalYear(c, "birth") is None, getVitalYear(c, "birth"))
@@ -648,11 +663,11 @@ def parseDate(date: Union[str, int]) -> Union[str, int]:
         return date
     date = date.split(" ")
     if len(date) > 1:
-        return date
+        return joinName(*date)
     return int(date[0])
 
 
-def generateFromShorthand(c: str, p: str) -> Dict:
+def generateFromShorthand(c: str, p: str = "") -> Dict:
     """
     Generate a person from a shorthand
     :param c: the shorthand
@@ -661,18 +676,21 @@ def generateFromShorthand(c: str, p: str) -> Dict:
     """
     gender, first, last, birth = (c.split("|") + [""] * 4)[:4]
     first = first.capitalize()
-    last = (
-        last.capitalize() if last else people.get(p, "").get("name", {}).get("last", "")
-    )
+    if last:
+        last = last.capitalize()
+    elif p:
+        last = people[p].get("name", {}).get("last", "")
+
     newPerson = {
         "id": generateIDn(f"{first.lower()}{last.lower()}"),
         "name": {
             "first": first,
-            "last": last,
         },
         "gender": gender,
         "shortname": joinName(first, last),
     }
+    if last:
+        newPerson["name"]["last"] = last
     if birth:
         newPerson["birth"] = {"date": parseDate(birth)}
 

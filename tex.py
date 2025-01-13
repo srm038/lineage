@@ -122,16 +122,19 @@ def getBurialDetails(person: Dict) -> str:
 
 def getChildrenDetails(person: Dict, p0: str) -> str:
     childrens = []
-    for s in person.get("children"):
-        if not person.get("children")[s]:
+    for s in person.get("marriage", dict()):
+        if not s:
             continue
         parentDetails = getParentDetails(person, s) + "\n"
         children = []
         for c in sorted(
-            person.get("children")[s], key=lambda y: getVitalYear(y, "birth") or 3000
+            person["marriage"][s].get("children", []),
+            key=lambda y: getVitalYear(y, "birth") or 3000,
         ):
             if c not in people:
-                warnings.warn(f"{c} doesn't have an entry", Warning)
+                warnings.warn(
+                    f"{c} doesn't have an entry", Warning
+                )
                 continue
             childDetail = getChildDetails(person, c, p0)
             children += [childDetail]
@@ -371,4 +374,4 @@ def writeGeneration(f, p0: str, g: Set):
 
 
 def writeTitle(f, familyName: str):
-    f.write(f"\\chapter*{{{familyName}}}\n\n")
+    f.write(f"\\chapter*{{{familyName.capitalize()}}}\n\n")

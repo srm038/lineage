@@ -73,6 +73,20 @@
               },
               "place": {
                 "$ref": "#/definitions/nonEmptyString"
+              },
+              "children": {
+                "oneOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/definitions/nonEmptyString"
+                    },
+                    "uniqueItems": true
+                  },
+                  {
+                    "$ref": "#/definitions/nonEmptyString"
+                  }
+                ]
               }
             }
           }
@@ -80,9 +94,7 @@
       },
       "buried": {
         "type": "object",
-        "required": [
-          "cemetery"
-        ],
+        "required": ["cemetery"],
         "additionalProperties": false,
         "properties": {
           "cemetery": {
@@ -102,25 +114,6 @@
       "mother": {
         "$ref": "#/definitions/nonEmptyString"
       },
-      "children": {
-        "oneOf": [
-          {
-            "type": "object",
-            "patternProperties": {
-              "[A-Za-z]+": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/definitions/nonEmptyString"
-                },
-                "uniqueItems": true
-              }
-            }
-          },
-          {
-            "$ref": "#/definitions/nonEmptyString"
-          }
-        ]
-      },
       "child": {
         "type": "array",
         "items": {
@@ -136,12 +129,7 @@
       },
       "gender": {
         "type": "string",
-        "enum": [
-          "M",
-          "F",
-          "m",
-          "f"
-        ]
+        "enum": ["M", "F", "m", "f"]
       },
       "note": {
         "$ref": "#/definitions/nonEmptyString"
@@ -175,11 +163,7 @@
         "type": "boolean"
       }
     },
-    "required": [
-      "id",
-      "name",
-      "gender"
-    ],
+    "required": ["id", "name", "gender"],
     "uniqueItems": true
   },
   "definitions": {
