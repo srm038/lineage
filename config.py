@@ -1,6 +1,6 @@
 from typing import Dict, List, Set
 
-from types_node import Person
+from models import Person
 
 
 people: Dict[str, Person] = dict()

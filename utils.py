@@ -8,7 +8,7 @@ import pluscodes
 from requests_cache import Optional
 
 from config import people, generations
-from types_node import Marriage, Person
+from models import Marriage, Person, Vitals
 
 
 def isDateFull(d: Union[str, int]) -> bool:
@@ -46,78 +46,51 @@ def importFamily(familyName: str, p0: str):
     rawData = loadRawData(familyName)
     # initial setup
     for p in rawData:
-        pid = p["id"]
-        people.update({pid: {k: v for k, v in p.items() if k != "id"}})
-        person = people[pid]
-        person["gender"] = person["gender"].upper()
-        person.setdefault("marriage", {})
-        person["spouse"] = list()
-        for s in person["marriage"]:
-            if s:
-                person["spouse"].append(s)
-            if "children" in person["marriage"][s]:
-                person["marriage"][s]["children"] = set(
-                    person["marriage"][s]["children"]
-                )
-        for i in ["child", "sources"]:
-            person.setdefault(i, set())
-            person[i] = set(person[i])
-        for i in ["first", "middle", "last"]:
-            if i not in person:
-                continue
-            person[i] = person[i].strip()
-            person[i] = person[i].replace(":", '\\"')
-        if "shortname" not in person["name"]:
-            person["name"]["shortname"] = joinName(
-                person.get("name", {}).get("first"), person.get("name", {}).get("last")
-            )
+        people[p["id"]] = Person(**{k: v for k, v in p.items()})
     # process children
     for p in list(people):
-        for s in people[p].get("marriage", {}):
-            for c in people[p]["marriage"][s].get("children", set()):
+        for s in people[p].getFecundSpouses():
+            for c in list(people[p].marriage[s].children):
                 if not c:
-                    people[p]["marriage"][s]["children"].remove(c)
+                    people[p].marriage[s].children.remove(c)
                     continue
-                if c not in people:
+                if "|" in c:
                     newPerson = generateFromShorthand(c, p)
-                    newId = newPerson["id"]
+                    newId = newPerson.id
                     people[newId] = newPerson
-                    people[p]["marriage"][s]["children"].remove(c)
-                    people[p]["marriage"][s]["children"].add(newId)
+                    people[p].marriage[s].children.remove(c)
+                    people[p].marriage[s].children.add(newId)
                     c = newId
-                parent = "father" if people[p]["gender"] == "M" else "mother"
-                otherParent = "mother" if parent == "father" else "father"
-                people[c][parent] = p
-                if s and s in people:
-                    people[c][otherParent] = s
+                if people[p].gender == "M":
+                    people[c].father = p
+                    people[c].mother = s
+                else:
+                    people[c].father = s
+                    people[c].mother = p
     # reciprocate data to spouses
     for p in list(people):
-        if people[p]["gender"] == "M":
-            for s in list(people[p].get("marriage", {})):
-                if s and s not in people:
-                    newPerson = generateFromShorthand(s)
-                    newId = newPerson["id"]
-                    people[newId] = newPerson
-                    people[p]["marriage"].update({newId: people[p]["marriage"][s]})
-                    people[p]["marriage"].pop(s)
-                    people[p]["spouse"].append(newId)
-                    people[p]["spouse"].remove(s)
-                    people[newId]["marriage"] = {p: people[p]["marriage"][newId]}
-                    people[newId]["spouse"] = p
-                    people[newId]["child"] = {
-                        c
-                        for c in people[p]["child"]
-                        if c in people[newId]["marriage"][p].get("children", set())
-                    }
-                if s in people:
-                    people[s]["spouse"] = p
-                    people[s].setdefault("marriage", {})
-                    people[s]["marriage"].update({p: people[p]["marriage"][s]})
-                    people[s]["child"] = {
-                        c
-                        for c in people[p]["child"]
-                        if c in people[s]["marriage"][p].get("children", set())
-                    }
+        for s in list(people[p].spouse):
+            if s and "|" in s:
+                newPerson = generateFromShorthand(s)
+                newId = newPerson.id
+                people[newId] = newPerson
+                people[p].marriage.update({newId: people[p].marriage[s]})
+                people[p].marriage.pop(s)
+                people[p].spouse.add(newId)
+                people[p].spouse.remove(s)
+                people[newId].marriage = {p: people[p].marriage[newId]}
+                people[newId].spouse |= set([s])
+                people[newId].child |= {
+                    c
+                    for c in people[p].child
+                    if c in people[newId].marriage[p].children
+                }
+            if s in people:
+                people[s].spouse |= set([p])
+                people[s].marriage.update({p: people[p].marriage[s]})
+                people[s].child |= {
+                    c for c in people[p].child if c in people[s].marriage[p].children
+                }
     updateGenerationGroups(p0)
 
 
@@ -157,23 +130,23 @@ def getParent(p: str, parent: Literal["father", "mother"]) -> Union[str, None]:
     """
     if parent not in ["father", "mother"]:
         raise KeyError(f"{parent} is not a proper parent")
-    return people.get(p, {}).get(parent)
+    return getattr(people.get(p, Person), parent, None)
 
 
 def getTitle(person: Person) -> str:
-    return person.get("title", "")
+    return person.name.title
 
 
 def getAntonym(person: Person) -> str:
-    return person.get("antonym", "")
+    return person.name.antonym
 
 
 def descent(p: str, p0: str) -> list:
     d = [[p]]
     while d[0][-1] != p0:
-        children = list(people[d[0][-1]]["child"])
+        children = list(people[d[0][-1]].child)
         if not len(children):
-            print(people[d[0][-1]])
+            break
         if len(children) > 1:
             d.append(d[-1] + descent(children[1], p0)[0])
         d[0].append(children[0])
@@ -182,28 +155,28 @@ def descent(p: str, p0: str) -> list:
 
 
 def lenSpearLine(m: list) -> int:
-    i = int(people[m[0]]["gender"] == "M")
+    i = int(people[m[0]].gender == "M")
     c = 0
     for j in m[i:]:
-        c += int(people[j]["gender"] == "M")
+        c += int(people[j].gender == "M")
     return c
 
 
 def updateGenerationGroups(p0):
     generations.clear()
     setGenerations(p0)
-    maxG = max(people[p].get("generation", 0) for p in people)
+    maxG = max(people[p].generation or 0 for p in people)
     for g in range(maxG + 1):
         generations.insert(0, set(filter(lambda p: isInGeneration(g, p), people)))
 
 
 def setGenerations(p0):
     for p in filter(lambda p: inFullTree(p, p0), people):
-        people[p]["generation"] = max(len(d) - 1 for d in descent(p, p0))
+        people[p].generation = max(len(d) - 1 for d in descent(p, p0))
 
 
 def isInGeneration(g: int, p: str) -> bool:
-    return "generation" in people[p] and people[p]["generation"] == g
+    return people[p].generation == g
 
 
 def getAncestors(p):
@@ -212,100 +185,71 @@ def getAncestors(p):
     while i != len(ancestors):
         i = len(ancestors)
         for q in list(ancestors):
-            if people[q].get("father") in people:
-                ancestors.add(people[q].get("father"))
-            if people[q].get("mother") in people:
-                ancestors.add(people[q].get("mother"))
+            if people[q].father in people:
+                ancestors.add(people[q].father)
+            if people[q].mother in people:
+                ancestors.add(people[q].mother)
     ancestors.discard(p)
     return ancestors
 
 
 def childCheck(p):
-    for s in people[p].get("marriage", {}):
-        for c in people[p]["marriage"][s].get("children", set()):
-            if people.get(c, Person).get("generation", 100) >= people[p].get(
-                "generation", 0
-            ):
+    gtg = True
+    for s in people[p].getFecundSpouses():
+        for c in people[p].marriage[s].children:
+            if people.get(c, Person).generation >= people[p].generation:
                 warnings.warn(f"generation issue: {p} and {c}", Warning)
-
-
-def getVitalYear(p: str, vital: Literal["birth", "death"]) -> Optional[int]:
-    if vital not in ["birth", "death"]:
-        raise KeyError(f"{vital} is not a vital statistic")
-    date: Union[int, str] = people.get(p, {}).get(vital, {}).get("date", 0)
-    if not date:
-        return None
-    if type(date) == int:
-        return date
-    date: list = date.split(" ")
-    return int(date[-1])
-
-
-def getMarriageYear(person: Person, s: str) -> int:
-    if not s:
-        return 0
-    date: Union[int, str] = person.get("marriage", {}).get(s, Marriage).get("date", 0)
-    if not date:
-        return 0
-    if type(date) == int:
-        return date
-    date: list = date.split(" ")
-    return int(date[-1])
+                gtg = False
+    return updateGenerationGroups
 
 
 def follow(p0: str, g=None, lost=False):
     i = 0
     endOfLine = dict()
-    for p in sorted(people, key=lambda p: getVitalYear(p, "birth") or 3000):
-        if lost and people[p].get("lost"):
+    for p in sorted(people, key=lambda p: people[p].birth.getYear() or 3000):
+        if lost and people[p].lost:
             continue
-        if g and people[p].get("generation") != g:
+        if g and people[p].generation != g:
             continue
-        if (
-            people[p]["gender"] == "F"
-            and people[p].get("spouse")
-            and people[p].get("generation")
-        ):
-            if type(people[p].get("spouse")) == list:
-                spouseNote = ", ".join(
-                    [people[s].get("note") for s in people[p]["spouse"] if s]
-                )
+        if people[p].gender == "F" and people[p].spouse and people[p].generation:
+            if type(people[p].spouse) == set:
+                spouseNote = ", ".join([people[s].note for s in people[p].spouse if s])
             else:
-                spouseNote = people[people[p]["spouse"]].get("note")
-            if not people[p].get("father"):
+                spouseNote = people[people[p].spouse].note
+            if not people[p].father:
                 endOfLine.update(
                     {
                         p: {
-                            "spouse": people[p]["spouse"],
-                            "birthyear": getVitalYear(p, "birth"),
-                            "note": people[p].get("note"),
+                            "spouse": people[p].spouse,
+                            "birthyear": people[p].birth.getYear(),
+                            "note": people[p].note,
                             "spouseNote": spouseNote,
                         }
                     }
                 )
                 i += 1
-            elif not inFullTree(people[p].get("father"), p0):
+            elif not inFullTree(people[p].father, p0):
                 endOfLine.update(
                     {
                         p: {
-                            "spouse": people[p]["spouse"],
-                            "birthyear": getVitalYear(p, "birth"),
-                            "note": people[p].get("note"),
+                            "spouse": people[p].spouse,
+                            "birthyear": people[p].birth.getYear(),
+                            "note": people[p].note,
                             "spouseNote": spouseNote,
                         }
                     }
                 )
                 i += 1
         if (
-            people[p]["gender"] == "M"
-            and people[p].get("generation")
-            and not inFullTree(people[p].get("father"), p0)
+            people[p].gender == "M"
+            and people[p].generation
+            and not inFullTree(people[p].father, p0)
         ):
             endOfLine.update(
                 {
                     p: {
-                        "birthyear": getVitalYear(p, "birth"),
-                        "note": people[p].get("note"),
+                        "birthyear": people[p].birth.getYear(),
+                        "note": people[p].note,
                     }
                 }
             )
@@ -313,22 +257,23 @@ def follow(p0: str, g=None, lost=False):
     for line in sorted(endOfLine, key=lambda p: endOfLine[p].get("birthyear") or 0):
         print(line, endOfLine[line])
     print(f"{i} threads to pull")
+    return
 
 
 def unsourced(g=None):
     i = 0
     for g in generations[::-1][2:]:
         for p in g:
-            if people[p]["gender"] == "M" and not people[p]["sources"]:
+            if people[p].gender == "M" and not people[p].sources:
                 print(
                     p,
-                    people[p]["name"]["shortname"],
-                    getVitalYear(p, "birth"),
-                    people[p]["note"],
+                    people[p].name.shortname,
+                    people[p].birth.getYear(),
+                    people[p].note,
                 )
                 i += 1
     print(f"{i} sources to get")
-    # return
+    return
 
 
 def generationCount(children=False):
@@ -341,12 +286,10 @@ def generationCount(children=False):
                             set.union(
                                 *(
                                     [
-                                        people[p]["marriage"]
-                                        .get(s, Marriage)
-                                        .get("children", set())
-                                        for s in people[p].get("marriage", {})
+                                        people[p].marriage[s].children
+                                        for s in people[p].marriage.keys()
                                     ]
-                                    if people[p].get("marriage", {})
+                                    if people[p].marriage
                                     else [set()]
                                 )
                             )
@@ -367,53 +310,51 @@ def getApproxVitals(root):
     done: Dict[str, Dict[str, int]] = dict()
     while current:
         for p in list(current):
-            b = getVitalYear(p, "birth")
-            d = getVitalYear(p, "death")
+            b = people[p].birth.getYear()
+            d = people[p].death.getYear()
             y = 0
             done.update({p: {"b": b, "d": d, "y": y}})
-            if people[p].get("father") in people:
-                current.add(people[p]["father"])
-            if people[p].get("mother") in people:
-                current.add(people[p]["mother"])
+            if people[p].father in people:
+                current.add(people[p].father)
+            if people[p].mother in people:
+                current.add(people[p].mother)
             current.discard(p)
 
     unknownb: Set[str] = set()
     unknownd: Set[str] = set()
     for p in done:
-        if not getVitalYear(p, "death"):
+        if not people[p].death.getYear():
             if (
-                getVitalYear(p, "birth")
-                and currentYear - getVitalYear(p, "birth") < 100
+                people[p].birth.getYear()
+                and currentYear - people[p].birth.getYear() < 100
             ):
                 done[p]["d"] = currentYear
                 continue
             unknownd.add(p)
             done[p]["d"] = getApproxDeath(done, p)
-        if not getVitalYear(p, "birth"):
+        if not people[p].birth.getYear():
             unknownb.add(p)
             done[p]["b"] = getApproxBirth(done, p)
     return done, unknownb, unknownd
 
 
 def getApproxDeath(done: dict, p: str) -> int:
-    if people[p].get("death", {}).get("date"):
-        return getVitalYear(p, "death")
+    if getattr(getattr(people[p], "death", Vitals), "date", False):
+        return people[p].death.getYear()
     allChildren = getAllChildren(p)
     lastChildBirth: int = max(
         list(filter(None, [getApproxBirth(done, c) for c in allChildren])) or [None]
     )
-    if people[p]["gender"] == "M":
-        spouses = people[p].get("spouse", [])
+    if people[p].gender == "M":
+        spouses = people[p].spouse
         marriageDates: List[Optional[int]] = [
-            getMarriageYear(people[p], s) for s in spouses
+            people[p].marriage[s].getYear() for s in spouses
         ]
     else:
         spouse = (
-            people[p].get("spouse")[0]
-            if type(people[p].get("spouse")) == list
-            else people[p].get("spouse")
+            people[p].spouse[0] if type(people[p].spouse) == set else people[p].spouse
         )
-        marriageDates: List[Optional[int]] = [getMarriageYear(people[p], spouse)]
+        marriageDates: List[Optional[int]] = [people[p].marriage[spouse].getYear()]
     marriageDates: Optional[int] = max(
         list(filter(lambda x: x != 0, marriageDates)) or [None]
     )
@@ -421,23 +362,23 @@ def getApproxDeath(done: dict, p: str) -> int:
 
 
 def getApproxBirth(done: dict, p: str) -> int:
-    if people[p].get("birth", {}).get("date"):
-        return getVitalYear(p, "birth")
+    if getattr(getattr(people[p], "birth", Vitals), "date", False):
+        return people[p].birth.getYear()
     allChildren = getAllChildren(p)
     firstChildBirth: Optional[int] = min(
         list(filter(None, [getApproxBirth(done, c) for c in allChildren])) or [None]
     )
     if firstChildBirth:
         firstChildBirth -= 20
-    fatherDeath: Optional[int] = done.get(people[p].get("mother"), dict()).get("d")
-    motherDeath: Optional[int] = done.get(people[p].get("father"), dict()).get("d")
-    if people[p]["gender"] == "M":
+    fatherDeath: Optional[int] = done.get(people[p].mother, dict()).get("d")
+    motherDeath: Optional[int] = done.get(people[p].father, dict()).get("d")
+    if people[p].gender == "M":
         marriageDates: List[Optional[int]] = [
-            getMarriageYear(people[p], s) for s in people[p].get("spouse", [])
+            people[p].marriage[s].getYear() for s in people[p].spouse
         ]
     else:
         marriageDates: List[Optional[int]] = [
-            getMarriageYear(people[p], people[p].get("spouse"))
+            people[p].marriage[people[p].spouse].getYear()
         ]
     marriageDates: Optional[int] = min(
         list(filter(lambda x: x != 0, marriageDates)) or [None]
@@ -451,9 +392,7 @@ def getApproxBirth(done: dict, p: str) -> int:
 
 
 def getAllChildren(p: str) -> Set[str]:
-    allChildren = {
-        i for i in people if p in {people[i].get("mother"), people[i].get("father")}
-    }
+    allChildren = {i for i in people if p in {people[i].mother, people[i].father}}
     return allChildren
 
 
@@ -466,52 +405,51 @@ def birthdays(month, p0):
 
 def announce(p, p0):
     for d in descent(p, p0):
-        a = f"On {people[p].get('birth', {}).get('date')}, {
-            people[p]['name']['shortname']} was born"
-        if people[p]["birthplace"]:
-            a += f" in {people[p]['birthplace']}.{' ' + people[p]
-                                                  ['history'] if people[p]['history'] else ''}\n"
+        a = f"On {people[p].birth.date}, {
+            people[p].name.shortname} was born"
+        if people[p].birth.place:
+            a += f" in {people[p].birth.place}.{' ' +
+                                                people[p].history or ''}\n"
         for n, i in enumerate(d[:-1]):
-            if people[i]["title"]:
-                a += f"{people[i]['title']} "
-            if people[i]["spouse"]:
-                if people[i]["gender"] == "M":
-                    for s in people[i]["spouse"]:
+            if people[i].title:
+                a += f"{people[i].title} "
+            if people[i].spouse:
+                if people[i].gender == "M":
+                    for s in people[i].spouse:
                         if d[n + 1] in people[i]["children"][s]:
                             break
                 else:
                     s = (
-                        people[i]["spouse"][0]
-                        if type(people[i]["spouse"]) == list
-                        else people[i]["spouse"]
+                        people[i].spouse[0]
+                        if type(people[i].spouse) == set
+                        else people[i].spouse
                     )
                 if s:
-                    a += f"{people[i]['name']['shortname']} married {people[s]['name']
-                                                             ['shortname']} and begat {people[d[n + 1]]['name']['shortname']}.\n"
+                    a += f"{people[i].name.shortname} married {
+                        people[s].name.shortname} and begat {people[d[n + 1]].name.shortname}.\n"
                 else:
-                    a += f"{people[i]['name']['shortname']
-                            } begat {people[d[n + 1]]['shortname']}.\n"
+                    a += f"{people[i].name.shortname} begat {
+                        people[d[n + 1]].name.shortname}.\n"
             else:
-                a += f"{people[i]['name']['shortname']} begat {
-                    people[d[n + 1]]['name']['shortname']}.\n"
-        a += f"{people[p].get('name', {}).get('first')} was my {'great-' * (
-            len(d) - 2)}grand{'father' if people[p]['gender'] == 'M' else 'mother'}."
-        if people[p]["buried"]:
-            a += f"\n{'He' if people[p]['gender'] == 'M' else 'She'} is buried in {
-                people[p]['buried']['cemetery']}."
+                a += f"{people[i].name.shortname} begat {
+                    people[d[n + 1]].name.shortname}.\n"
+        a += f"{people[p].name.first} was my {'great-' * (len(d) - 2)}grand{'father' if people[p].gender == 'M' else 'mother'}."
+        if people[p].buried:
+            a += f"\n{'He' if people[p].gender == 'M' else 'She'} is buried in {people[p].buried.cemetery}."
         print(a)
+    return
 
 
 def getLivingAncestors(p: str) -> Set[str]:
-    b0 = getVitalYear(p, "birth")
-    d0 = getVitalYear(p, "death")
+    b0 = people[p].birth.getYear()
+    d0 = people[p].death.getYear()
     alive = set()
     if not b0 and not d0:
         raise ValueError(f"{p} doesnt have vital statistics")
     year = datetime.date.today().year
     for a in getAncestors(p):
-        b = getVitalYear(a, "birth")
-        d = getVitalYear(a, "death")
+        b = people[a].birth.getYear()
+        d = people[a].death.getYear()
         if not d and year - b < 100:
             d = year
         if b0 and d and d > b0:
@@ -544,11 +482,11 @@ def ancestors_by_age():
         if people[p].get("birth", {}).get("date") and people[p]["deathdate"]
     ]
     for p in sorted(
-        byAge, key=lambda p: getVitalYear(p, "death") - getVitalYear(p, "birth")
+        byAge, key=lambda p: people[p].death.getYear() - people[p].birth.getYear()
     ):
         print(
             people[p]["name"]["shortname"],
-            getVitalYear(p, "death") - getVitalYear(p, "birth"),
+            people[p].death.getYear() - people[p].birth.getYear(),
         )
 
 
@@ -576,11 +514,11 @@ def generateIDn(nameID: str) -> str:
 
 
 def getSpouse(p: str) -> List[str]:
-    if len(people[p]["spouse"]) == 0:
+    if len(people[p].spouse) == 0:
         return ""
-    if type(people[p]["spouse"]) == str:
-        return [people[p]["spouse"]]
-    return people[p]["spouse"]
+    if type(people[p].spouse) == str:
+        return [people[p].spouse]
+    return people[p].spouse
 
 
 def getChildren(p: str, spouse: str):
@@ -592,7 +530,7 @@ def getChildren(p: str, spouse: str):
         .get("children", set())
     )
     children.sort(
-        key=lambda c: (getVitalYear(c, "birth") is None, getVitalYear(c, "birth"))
+        key=lambda c: (people[c].birth.getYear() is None, people[c].birth.getYear())
     )
     return children
 
@@ -648,9 +586,9 @@ def begats(p: str, p0: str) -> str | list[str]:
 
 
 def getFullName(person: Person) -> str:
-    firstName = person.get("name", {}).get("first")
-    middleName = person.get("name", {}).get("middle")
-    lastName = person.get("name", {}).get("last")
+    firstName = person.name.first
+    middleName = person.name.middle
+    lastName = person.name.last
     name = joinName(firstName, middleName, lastName)
     return name
 
@@ -679,21 +617,23 @@ def generateFromShorthand(c: str, p: str = "") -> Person:
     gender, first, last, birth = (c.split("|") + [""] * 4)[:4]
     first = first.capitalize()
     if last:
-        last = last.capitalize()
+        last = last.capitalize() if " " not in last else last
     elif p:
-        last = people[p].get("name", {}).get("last", "")
+        last = people[p].name.last
 
-    newPerson: Person = {
-        "id": generateIDn(f"{first.lower()}{last.lower()}"),
-        "name": {
-            "first": first,
-            "shortname": joinName(first, last),
-        },
-        "gender": gender,
-    }
+    newPerson = Person(
+        **{
+            "id": generateIDn(f"{first.lower()}{last.lower()}"),
+            "name": {
+                "first": first,
+                "shortname": joinName(first, last),
+            },
+            "gender": gender,
+        }
+    )
     if last:
-        newPerson["name"]["last"] = last
+        newPerson.name.last = last
     if birth:
-        newPerson["birth"] = {"date": parseDate(birth)}
+        newPerson.birth = Vitals(date=birth)
 
     return newPerson

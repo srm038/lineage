@@ -2,14 +2,12 @@ import os
 from typing import Dict, Literal, Set, Union
 import warnings
 
-from types_node import Marriage, Person
+from models import Marriage, Person, Vitals
 from utils import (
     getAntonym,
     getFullName,
-    getMarriageYear,
     getParent,
     getTitle,
-    getVitalYear,
     importFamily,
     inFullTree,
     isDateFull,
@@ -33,10 +31,7 @@ def getLineage(p: str, parent: Literal["father", "mother"]) -> str:
     if not p1 or p1 not in people:
         return ""
     parentLine = getLineage(p1, parent)
-    line: str = (
-        f"\\namelink{{{p1}}}{{{
-            people[p1].get('name', {}).get('first')}}}"
-    )
+    line: str = f"\\namelink{{{p1}}}{{{people[p1].name.first}}}"
     line += ", " if parentLine else ""
     line += parentLine
     return line
@@ -62,22 +57,19 @@ def printIndividualEntry(p: str, p0: str) -> str:
     vitals = combineVitals(birth, death)
     accolades = getAccolades(person)
     spouseDetails = generateSpouse(person, p0)
-    history = person.get("history", None)
+    history = person.history
     childrenDetails = getChildrenDetails(person, p0)
     spouses = sorted(
-        filter(lambda s: s != "", person.get("spouse", [])),
-        key=lambda x: getMarriageYear(person, x),
+        filter(lambda s: s != "", person.spouse),
+        key=lambda x: person.marriage[x].getYear() or 3000,
     )
     burialDetails: list[str] = [getBurialDetails(person)] + [
-        getBurialDetails(people[s]) for s in spouses
+        getBurialDetails(people[s]) for s in spouses if s
     ]
     burialDetails = list(filter(lambda b: b != "", burialDetails))
     if len(set(burialDetails)) != 1:
         for i, (b, q) in enumerate(zip(burialDetails, [p] + spouses)):
-            burialDetails[i] = (
-                f"{
-                    b} ({people[q].get('name', {}).get('first')})"
-            )
+            burialDetails[i] = f"{b} ({people[q].name.first})"
     burialDetails = list(set(burialDetails))
     sources = getSources(person)
 
@@ -100,37 +92,38 @@ def printIndividualEntry(p: str, p0: str) -> str:
 
 
 def getSources(person: Person) -> str:
-    if not person.get("sources"):
+    if not person.sources:
         return ""
-    allSources = person.get("sources")
-    for s in person.get("spouse"):
+    allSources = person.sources
+    for s in person.spouse:
         if not s:
             continue
-        allSources |= people[s].get("sources", set())
+        allSources |= people[s].sources
     sources = [f"\\item{{{s}}}" for s in sorted(allSources)]
     return buildSentence("\\begin{source}", *sources, "\\end{source}")
 
 
 def getBurialDetails(person: Person) -> str:
-    if person.get("buried"):
-        return (
-            f"\\buried \\href{{{'http://plus.codes/' +
-                                person.get('buried', {}).get('plusCode', '')}}}"
-            f"{{{person.get('buried', {}).get('cemetery')}}}"
-        )
+    if person.buried.cemetery:
+        if person.buried.plusCode:
+            return (
+                f"\\buried \\href{{{'http://plus.codes/' + person.buried.plusCode}}}"
+                f"{{{person.buried.cemetery}}}"
+            )
+        return f"\\buried {person.buried.cemetery}"
     return ""
 
 
 def getChildrenDetails(person: Person, p0: str) -> str:
     childrens = []
     parentDetails = ""
-    for s in person.get("marriage", {}):
+    for s in person.getFecundSpouses():
         if s:
             parentDetails = getParentDetails(person, s) + "\n"
         children = []
         for c in sorted(
-            person["marriage"][s].get("children", []),
-            key=lambda y: getVitalYear(y, "birth") or 3000,
+            person.marriage[s].children,
+            key=lambda y: people[y].birth.getYear() or 3000,
         ):
             if c not in people:
                 warnings.warn(f"{c} doesn't have an entry", Warning)
@@ -152,52 +145,46 @@ def getChildDetails(person: Person, c: str, p0: str) -> str:
     return (
         f"\\childlist{mainLine}{{{c if mainLine else ''}}}"
         f"{{{buildSentence(title, joinComma(
-            people[c]['name']['shortname'], antonym))}}}"
+            people[c].name.shortname, antonym))}}}"
         f"{{{buildParagraph(birth, marriage)}}}"
     )
 
 
 def childMarriage(c: str, mainLine: str, p0: str) -> str:
-    if people[c]["gender"] == "M" or not mainLine:
+    if people[c].gender == "M" or not mainLine:
         return ""
-    spouses = people[c].get("spouse", "")
+    spouses = people[c].spouse
     if type(spouses) == str:
         spouses = [spouses]
     for cs in spouses:
-        if not people.get(cs, dict()).get("generation"):
+        if not people.get(cs, Person).generation:
             continue
-        return f"{getPronoun(people[c])} married {getShortNamelink(cs, p0)}"
+        return f"{people[c].getPronoun()} married {getShortNamelink(cs, p0)}"
 
 
 def childBirth(c: str) -> str:
-    if people[c].get("birth", {}).get("date"):
-        return f"born {people[c].get('birth', {}).get('date')}"
-    return ""
+    return f"born {people[c].birth.date}" if people[c].birth.date else ""
 
 
 def getMainLine(person: Person, c: str) -> str:
-    if c in person.get("child", set()):
-        return "[+]"
-    return ""
+    return "[+]" if c in person.child else ""
 
 
 def getParentDetails(person: Person, s: str) -> str:
     if not s:
-        return f"{person['name']['shortname']}\\children"
+        return f"{person.name.shortname}\\children"
     if s not in people:
-        return f"{person['name']['shortname']} and {s}\\children"
-    return (
-        f"{person['name']['shortname']} and {people[s]['name']['shortname']}\\children"
-    )
+        return f"{person.name.shortname} and {s}\\children"
+    return f"{person.name.shortname} and {people[s].name.shortname}\\children"
 
 
 def generateSpouse(person: Person, p0: str):
-    spouse: list = person.get("spouse", [])
+    spouse: list = person.spouse
     if type(spouse) == str:
         spouse: list = [spouse]
     spouseDetail = []
     sortedSpouses = sorted(
-        filter(lambda s: s != "", spouse), key=lambda x: getMarriageYear(person, x)
+        filter(lambda s: s != "", spouse), key=lambda x: person.marriage[x].getYear() or 3000
     )
     for s in sortedSpouses:
         if not s:
@@ -208,21 +195,23 @@ def generateSpouse(person: Person, p0: str):
         birth = combineDatePlace(people[s], "birth")
         death = combineDatePlace(people[s], "death")
         vitals = combineVitals(birth, death, parents=getSpouseParents(s, p0))
-        history = people[s].get("history")
+        history = people[s].history
 
         spouseDetail += [
-            buildSentence(getPronoun(person), "married", nSpouse, spouseName, marriage),
-            buildSentence(getPronoun(people[s]) if vitals else None, vitals),
+            buildSentence(
+                person.getPronoun(), "married", nSpouse, spouseName, marriage
+            ),
+            buildSentence(people[s].getPronoun() if vitals else None, vitals),
             history,
         ]
     return spouseDetail
 
 
 def getSpouseParents(s: str, p0: str) -> str:
-    spouseFather = people[s].get("father")
-    spouseMother = people[s].get("mother")
-    spouseFatherName = ""
-    spouseMotherName = ""
+    spouseFather = people[s].father
+    spouseMother = people[s].mother
+    spouseFatherName = None
+    spouseMotherName = None
     if spouseFather in people:
         spouseFatherName = getSpouseName(spouseFather, p0, includePatriline=False)
     if spouseMother in people:
@@ -232,21 +221,21 @@ def getSpouseParents(s: str, p0: str) -> str:
 
 def getShortNamelink(p: str, p0: str) -> str:
     if inFullTree(p, p0):
-        return f"\\namelink{{{p}}}{{{people[p]['name']['shortname']}}}"
-    return f"{people[p]['name']['shortname']}"
+        return f"\\namelink{{{p}}}{{{people[p].name.shortname}}}"
+    return f"{people[p].name.shortname}"
 
 
 def getShortNamelinkBold(p: str, p0: str) -> str:
     if inFullTree(p, p0):
-        return f"\\namelinkbold{{{p}}}{{{people[p]['name']['shortname']}}}"
-    return f"{people[p]['name']['shortname']}"
+        return f"\\namelinkbold{{{p}}}{{{people[p].name.shortname}}}"
+    return f"{people[p].name.shortname}"
 
 
 def getSpouseName(s: str, p0: str, includePatriline: bool = True) -> str:
     patriline = printLineage(s, "father")
-    shortName = people[s]["name"]["shortname"]
+    shortName = people[s].name.shortname
     if inFullTree(s, p0):
-        if not people[s].get("father") and not people[s].get("mother"):
+        if not people[s].father and not people[s].mother:
             return f"\\textbf{{{shortName}}}{getNameIndex(people[s])}"
         if includePatriline:
             return buildSentence(getShortNamelinkBold(s, p0), f"{patriline}")
@@ -259,10 +248,6 @@ def getSpouseNumber(s: str, spouse: iter) -> Union[int, str]:
     if len(spouse) > 1:
         return f"({nSpouse})"
     return ""
-
-
-def getPronoun(person: Person) -> str:
-    return {"M": "He"}.get(person["gender"], "She")
 
 
 def buildParagraphs(*paragraphs: iter) -> str:
@@ -281,7 +266,7 @@ def buildSentence(*phrases: iter) -> str:
 def getAccolades(person: Person) -> str:
     accolades = []
     for a in ["army", "mason"]:
-        if person.get(a):
+        if getattr(person, a, None):
             accolades.append(a)
     return "".join(f"\\{a}" for a in accolades)
 
@@ -297,13 +282,13 @@ def combineVitals(birth: str, death: str, parents: str = "") -> str:
     return vitals
 
 
-def combineDatePlace(person: Person, vital: str) -> str:
-    if vital not in ["birth", "death", "marriage"]:
+def combineDatePlace(person: Person, vital: Literal["birth", "death"]) -> str:
+    if vital not in ["birth", "death"]:
         raise KeyError(f"{vital} is not a vital statistic")
-    vitalDate: str = person.get(vital, {}).get("date")
-    vitalPlace: str = person.get(vital, {}).get("place")
-    date: str = ""
-    place: str = ""
+    vitalDate = getattr(getattr(person, vital, Vitals), "date", "")
+    vitalPlace = getattr(getattr(person, vital, Vitals), "place", "")
+    date = ""
+    place = ""
     if vitalDate:
         full = isDateFull(vitalDate)
         date = f"{'on' if full else 'in'} {vitalDate}"
@@ -313,8 +298,8 @@ def combineDatePlace(person: Person, vital: str) -> str:
 
 
 def combineMarriageDatePlace(person: Person, s: str) -> str:
-    vitalDate = person.get("marriage", {}).get(s, Marriage).get("date")
-    vitalPlace = person.get("marriage", {}).get(s, Marriage).get("place")
+    vitalDate = getattr(person.marriage.get(s, Marriage), "date")
+    vitalPlace = getattr(person.marriage.get(s, Marriage), "place")
     date: str = ""
     place: str = ""
     if vitalDate:
@@ -337,16 +322,16 @@ def printLineage(p, parent):
 
 
 def getNameIndex(person: Person) -> str:
-    firstName = person.get("name", {}).get("first")
-    middleName = person.get("name", {}).get("middle")
-    lastName = person.get("name", {}).get("last")
+    firstName = person.name.first
+    middleName = person.name.middle
+    lastName = person.name.last
     nameIndex = rf"\index{{{lastName or ''}!{
         joinName(firstName, middleName)}}}"
     return nameIndex
 
 
 def getAncestorTag(person: Person) -> str:
-    if not person.get("father"):
+    if not person.father:
         return "[p]"
     return ""
 
@@ -365,11 +350,11 @@ def writeGenerations(f, p0: str):
 
 
 def writeGeneration(f, p0: str, g: Set):
-    if p0 in g and people[p0]["gender"] == "F":
+    if p0 in g and people[p0].gender == "F":
         return
     f.write(f"\\generationgroup\n\n")
-    for p in sorted(list(g), key=lambda y: getVitalYear(y, "birth") or 3000):
-        if people[p]["gender"] == "F" and people[p].get("spouse", []):
+    for p in sorted(list(g), key=lambda y: people[y].birth.getYear() or 3000):
+        if people[p].gender == "F" and people[p].spouse:
             continue
         f.write(f"{printIndividualEntry(p, p0)}\n\n")
 

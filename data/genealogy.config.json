@@ -75,18 +75,11 @@
                 "$ref": "#/definitions/nonEmptyString"
               },
               "children": {
-                "oneOf": [
-                  {
-                    "type": "array",
-                    "items": {
-                      "$ref": "#/definitions/nonEmptyString"
-                    },
-                    "uniqueItems": true
-                  },
-                  {
-                    "$ref": "#/definitions/nonEmptyString"
-                  }
-                ]
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/nonEmptyString"
+                },
+                "uniqueItems": true
               }
             }
           }

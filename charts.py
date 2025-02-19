@@ -10,11 +10,9 @@ from utils import (
     getApproxBirth,
     getApproxVitals,
     getChildren,
-    getMarriageYear,
     getParent,
     getSpouse,
     getState,
-    getVitalYear,
 )
 
 from config import people, generations
@@ -744,11 +742,10 @@ def drawLineChart(
                 f"class='unknownda' />"
             )
         for s in people[p].get("marriage", {}):
-            if not getMarriageYear(people[p], s):
+            if not people[p].marriage[s].getYear():
                 continue
             flags += (
-                f"<image x='{getMarriageYear(
-                    people[p], s) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' "
+                f"<image x='{people[p].marriage[s].getYear() * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' "
                 f"height='9pt' href='../flags/{getState(p, 'marriage')[s].lower(
                 )}.png' style='transform: translateX(-7.36pt)'/>"
             )
@@ -1018,8 +1015,7 @@ def drawZegelchart(p: str):
                 sidx = next(
                     (j for j, e in enumerate(descendants) if e["id"] == s), None
                 )
-                lines += f"<path id='{d['id']}-{s}' d='M {getMarriageYear(
-                    people[d['id']], s):.3f} {y(i) + toPt(5):.3f} V {y(sidx) + toPt(5):.3f}' />"
+                lines += f"<path id='{d['id']}-{s}' d='M {people[d['id']].marriage[s].getYear():.3f} {y(i) + toPt(5):.3f} V {y(sidx) + toPt(5):.3f}' />"
         if (
             next(
                 (
@@ -1031,8 +1027,10 @@ def drawZegelchart(p: str):
             )
             is not None
         ):
-            if marriageYear := getMarriageYear(
-                people[getParent(d["id"], "father")], getParent(d["id"], "mother")
+            if (
+                marriageYear := people[people[p].father]
+                .marriage[people[p].mother]
+                .getYear()
             ):
                 lines += f"<path id='{d['id']}-parent' d='M {d['b']
                     :.3f} {y(i) + toPt(5):.3f} H {marriageYear:.3f}' />"
@@ -1061,8 +1059,8 @@ def generateZegelchart(p: str) -> List[Dict[str, Union[int, str, None]]]:
     def essentials(p: str):
         return {
             "id": p,
-            "b": getVitalYear(p, "birth") or getApproxBirth(dict(), p),
-            "d": getVitalYear(p, "death"),
+            "b": people[p].birth.getYear() or getApproxBirth(dict(), p),
+            "d": people[p].death.getYear(),
         }
 
     descent = [essentials(p)]
