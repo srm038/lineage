@@ -656,8 +656,8 @@ def drawLineChart(
     years = ""
     flags = ""
     for p in done:
-        if people[p].get("mother") in done:
-            m = people[p]["mother"]
+        if people[p].mother in done:
+            m = people[p].mother
             begats += (
                 f"<path d='M {done[p]['b'] * w /
                               widx:.3f},{addPt(p, 'y', -5):.3f} "
@@ -667,8 +667,8 @@ def drawLineChart(
             )
             begats += f"<circle cx='{done[p]['b'] * w /
                                      widx:.3f}' cy='{addPt(m, 'y', -5):.3f}' r='3' />"
-        if people[p].get("father") in done:
-            f = people[p]["father"]
+        if people[p].father in done:
+            f = people[p].father
             begats += (
                 f"<path d='M {done[p]['b'] * w /
                               widx:.3f},{addPt(p, 'y', 5):.3f} "
@@ -678,7 +678,7 @@ def drawLineChart(
             )
             begats += f"<circle cx='{done[p]['b'] * w /
                                      widx:.3f}' cy='{addPt(f, 'y'):.3f}' r='3' />"
-        if people[p].get("mother") in done or people[p].get("father") in done:
+        if people[p].mother in done:
             begats += f"<circle cx='{done[p]['b'] * w /
                                      widx:.3f}' cy='{addPt(p, 'y'):.3f}' r='3' />"
     for p in done:
@@ -741,7 +741,7 @@ def drawLineChart(
                     6 * w / widx:.3f}' height='{pt2px(10):.3f}' id='{p}-d'"
                 f"class='unknownda' />"
             )
-        for s in people[p].get("marriage", {}):
+        for s in people[p].spouse:
             if not people[p].marriage[s].getYear():
                 continue
             flags += (
@@ -755,8 +755,8 @@ def drawLineChart(
                 'nameunknown' if p in unknownb | unknownd else ''}'>"
             f"<tspan dx='{pt2px(2):.3f}' dy='{pt2px(1):.3f}' x={
                 done[p]['b'] * w / widx:.3f} y={done[p]['y']:.3f}>"
-            f"{people[p].get('name', {}).get('first')} {
-                people[p].get('last', '')}</tspan></text>"
+            f"{people[p].name.first} {
+                people[p].name.last}</tspan></text>"
         )
     for y in range(math.floor(minx), math.ceil(maxx) + 1):
         if not y % 100:
@@ -832,10 +832,10 @@ def getInitialPositionsLine(
                 descendants.update({key: keyc})
                 ancestors.setdefault(keyc, set())
                 ancestors[keyc].add(key)
-            if people[c].get("father") in people:
-                current.add(people[c]["father"])
-            if people[c].get("mother") in people:
-                current.add(people[c]["mother"])
+            if people[c].father in people:
+                current.add(people[c].father)
+            if people[c].mother in people:
+                current.add(people[c].mother)
             current.discard(c)
     return ancestors, descendants, initialPositions
 
@@ -968,9 +968,9 @@ def positionLine(descentList: list, numGenerations: int, size: float) -> int:
         return 0
     for i, j in enumerate(descentList[::-1][1:]):
         yy = round(
-            (1 if people[j]["gender"] == "F" else -1)
+            (1 if people[j].gender == "F" else -1)
             * size
-            * 2 ** (numGenerations - people[j]["generation"])
+            * 2 ** (numGenerations - people[j].generation)
         )
         y += yy
     return y

@@ -338,51 +338,50 @@ def getApproxVitals(root):
     return done, unknownb, unknownd
 
 
+def getChildBirthYears(done: dict, p: str) -> int:
+    allChildren = getAllChildren(p)
+    childBirthYears: int = list(
+        filter(None, [getApproxBirth(done, c) for c in allChildren])
+    ) or [None]
+    return childBirthYears
+
+
+def getMarriageDates(p: str) -> List[int | None]:
+    marriageDates: List[int | None] = []
+    if people[p].gender == "M":
+        spouses = people[p].spouse
+        marriageDates = [people[p].marriage[s].getYear() for s in spouses]
+    elif people[p].spouse:
+        spouse: str = (
+            list(people[p].spouse)[0]
+            if type(people[p].spouse) == set
+            else people[p].spouse
+        )
+        marriageDates = [people[p].marriage[spouse].getYear()]
+    marriageDates: Optional[int] = max(
+        list(filter(lambda x: x != 0, filter(None, marriageDates))) or [None]
+    )
+    return marriageDates
+
+
 def getApproxDeath(done: dict, p: str) -> int:
     if getattr(getattr(people[p], "death", Vitals), "date", False):
         return people[p].death.getYear()
-    allChildren = getAllChildren(p)
-    lastChildBirth: int = max(
-        list(filter(None, [getApproxBirth(done, c) for c in allChildren])) or [None]
-    )
-    if people[p].gender == "M":
-        spouses = people[p].spouse
-        marriageDates: List[Optional[int]] = [
-            people[p].marriage[s].getYear() for s in spouses
-        ]
-    else:
-        spouse = (
-            people[p].spouse[0] if type(people[p].spouse) == set else people[p].spouse
-        )
-        marriageDates: List[Optional[int]] = [people[p].marriage[spouse].getYear()]
-    marriageDates: Optional[int] = max(
-        list(filter(lambda x: x != 0, marriageDates)) or [None]
-    )
+    lastChildBirth = max(getChildBirthYears(done, p))
+    marriageDates = getMarriageDates(p)
     return max(list(filter(None, [lastChildBirth, marriageDates])) or [None])
 
 
 def getApproxBirth(done: dict, p: str) -> int:
     if getattr(getattr(people[p], "birth", Vitals), "date", False):
         return people[p].birth.getYear()
-    allChildren = getAllChildren(p)
-    firstChildBirth: Optional[int] = min(
-        list(filter(None, [getApproxBirth(done, c) for c in allChildren])) or [None]
-    )
+
+    firstChildBirth = min(getChildBirthYears(done, p))
     if firstChildBirth:
         firstChildBirth -= 20
-    fatherDeath: Optional[int] = done.get(people[p].mother, dict()).get("d")
-    motherDeath: Optional[int] = done.get(people[p].father, dict()).get("d")
-    if people[p].gender == "M":
-        marriageDates: List[Optional[int]] = [
-            people[p].marriage[s].getYear() for s in people[p].spouse
-        ]
-    else:
-        marriageDates: List[Optional[int]] = [
-            people[p].marriage[people[p].spouse].getYear()
-        ]
-    marriageDates: Optional[int] = min(
-        list(filter(lambda x: x != 0, marriageDates)) or [None]
-    )
+    fatherDeath: int | None = done.get(people[p].mother, dict()).get("d")
+    motherDeath: int | None = done.get(people[p].father, dict()).get("d")
+    marriageDates = getMarriageDates(p)
     if marriageDates:
         marriageDates -= 20
     return min(
@@ -457,21 +456,25 @@ def getLivingAncestors(p: str) -> Set[str]:
     return alive
 
 
-def getState(p: dict, time: str) -> Union[None, dict, str]:
+def getState(
+    p: dict, time: Literal["marriage", "birth", "death"]
+) -> Union[None, dict, str]:
     if time == "marriage":
         state = {
-            m: people[p]
-            .get("marriage", {})
-            .get(m, {})
-            .get("place", ",")
+            m: (
+                getattr(
+                    getattr(people[p], "marriage", {}).get(m, Marriage), "place", ","
+                )
+                or ","
+            )
             .split(",")[-1]
             .strip()
-            for m in people[p].get("marriage", {"": ","})
+            for m in getattr(people[p], "marriage", {"": ","})
         }
         return state
-    if not people[p].get(time, {}).get("place"):
+    if not getattr(getattr(people[p], time, Vitals), "place", False):
         return None
-    state = people[p].get(f"{time}place", ",").split(",")
+    state = getattr(getattr(people[p], time, Vitals), "place", ",").split(",")
     return state[-1].strip()
 
 
