@@ -143,15 +143,23 @@ def getAntonym(person: Person) -> str:
 
 def descent(p: str, p0: str) -> list:
     d = [[p]]
-    while d[0][-1] != p0:
-        children = list(people[d[0][-1]].child)
-        if not len(children):
-            break
-        if len(children) > 1:
-            d.append(d[-1] + descent(children[1], p0)[0])
-        d[0].append(children[0])
+    found_paths = []
 
-    return sorted(d, key=lambda m: lenSpearLine(m[::-1]), reverse=True)
+    while d:
+        current_path = d.pop(0)
+        current = current_path[-1]
+
+        if current == p0:
+            found_paths.append(current_path)
+            continue
+
+        for spouse in people[current].getFecundSpouses():
+            for child in people[current].marriage[spouse].children:
+                if child:
+                    new_path = current_path + [child]
+                    d.append(new_path)
+
+    return sorted(found_paths, key=lambda m: lenSpearLine(m[::-1]), reverse=True)
 
 
 def lenSpearLine(m: list) -> int:
