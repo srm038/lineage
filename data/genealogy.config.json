@@ -154,6 +154,20 @@
       },
       "lost": {
         "type": "boolean"
+      },
+      "blazon": {
+        "oneOf": [
+          {
+            "$ref": "#/definitions/nonEmptyString"
+          },
+          {
+            "type": "array",
+            "items": {
+              "$ref": "#/definitions/nonEmptyString"
+            },
+            "uniqueItems": true
+          }
+        ]
       }
     },
     "required": ["id", "name", "gender"],

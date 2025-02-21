@@ -184,7 +184,8 @@ def generateSpouse(person: Person, p0: str):
         spouse: list = [spouse]
     spouseDetail = []
     sortedSpouses = sorted(
-        filter(lambda s: s != "", spouse), key=lambda x: person.marriage[x].getYear() or 3000
+        filter(lambda s: s != "", spouse),
+        key=lambda x: person.marriage[x].getYear() or 3000,
     )
     for s in sortedSpouses:
         if not s:
@@ -268,7 +269,10 @@ def getAccolades(person: Person) -> str:
     for a in ["army", "mason"]:
         if getattr(person, a, None):
             accolades.append(a)
-    return "".join(f"\\{a}" for a in accolades)
+    if blazon := getattr(person, "blazon", set()):
+        for b in blazon:
+            accolades.append(fr"includegraphics[height=\fontcharht\font`l]{{../data/arms/{b}}}")
+    return r"\,".join(fr"\{a}" for a in accolades)
 
 
 def combineVitals(birth: str, death: str, parents: str = "") -> str:

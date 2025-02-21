@@ -119,6 +119,7 @@ class Person:
         templar: Optional[bool] = None,
         lost: Optional[bool] = None,
         buried: Optional[Buried] = None,
+        blazon: None | Set[str] = None,
     ):
         self.id = id
         self.name = Name(**name)
@@ -143,6 +144,11 @@ class Person:
         self.templar = templar
         self.lost = lost
         self.buried = Buried(**buried) if buried else Buried()
+        self.blazon = (
+            set(blazon)
+            if type(blazon) == list
+            else (set([blazon]) if blazon else set())
+        )
 
     def set(self, **kwargs):
         for key, value in kwargs.items():
