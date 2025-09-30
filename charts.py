@@ -829,9 +829,10 @@ def getInitialPositionsLine(
                 if not keyc:
                     continue
                 keyc = keyc[0]
-                descendants.update({key: keyc})
-                ancestors.setdefault(keyc, set())
-                ancestors[keyc].add(key)
+                if key != keyc:
+                    descendants.update({key: keyc})
+                    ancestors.setdefault(keyc, set())
+                    ancestors[keyc].add(key)
             if people[c].father in people:
                 current.add(people[c].father)
             if people[c].mother in people:
@@ -1082,7 +1083,7 @@ def phi(a, b):
 
 
 def getRadialChartLayout(root: str) -> dict:
-    approxVitals = getApproxVitals(root)
+    approxVitals = getApproxVitals(root)[0]
     radialChart: dict[
         str, dict[str, list[str] | int | float] | dict[str, list[str] | int | float]
     ] = {
@@ -1113,7 +1114,7 @@ def getRadialChartLayout(root: str) -> dict:
                                 "r1": approxVitals[root]["d"] - approxVitals[p]["d"],
                                 "r2": approxVitals[root]["d"] - approxVitals[p]["b"],
                                 "a": radialChart[r]["a"]
-                                + (1 if people[p]["gender"] == "M" else 0) * d,
+                                + (1 if people[p].gender == "M" else 0) * d,
                                 "b": d,
                                 "p": list(
                                     filter(
@@ -1224,7 +1225,7 @@ def drawRadialChart(file, radialChart):
     paths = ""
     xMin, xMax, yMin, yMax = 0, 0, 0, 0
     for r in radialChart:
-        paths += f'<path id="{r}" class="life {people[r]["gender"]}" d="M {radialChart[r]["r1"]} 0 H {
+        paths += f'<path id="{r}" class="life {people[r].gender}" d="M {radialChart[r]["r1"]} 0 H {
             radialChart[r]["r2"]}" transform="rotate({-radialChart[r]["phi"]} 0 0)" />'
         x, y = radialChart[r]["r2"] * math.cos(
             math.radians(radialChart[r]["phi"])
