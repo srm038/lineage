@@ -197,6 +197,7 @@ def generateSpouse(person: Person, p0: str):
         death = combineDatePlace(people[s], "death")
         vitals = combineVitals(birth, death, parents=getSpouseParents(s, p0))
         history = people[s].history
+        spouseMarriageHistory = generateSpouseMarriageHistory(person, s)
 
         spouseDetail += [
             buildSentence(
@@ -204,8 +205,35 @@ def generateSpouse(person: Person, p0: str):
             ),
             buildSentence(people[s].getPronoun() if vitals else None, vitals),
             history,
+            spouseMarriageHistory,
         ]
     return spouseDetail
+
+
+def generateSpouseMarriageHistory(person: Person, s: str) -> str:
+    spouse = people[s]
+    spouseDetail = []
+    sortedSpouses = sorted(
+        filter(lambda s: s != "", spouse.spouse),
+        key=lambda x: spouse.marriage[x].getYear() or 3000,
+    )
+    if len(sortedSpouses) <= 1:
+        return ""
+    for s in sortedSpouses:
+        spouseName = getSpouseName(s, person.id, includePatriline=False)
+        nSpouse = getSpouseNumber(s, sortedSpouses)
+        spouseDetail.append(
+            buildSentence(nSpouse, spouseName),
+        )
+    if not spouseDetail:
+        return ""
+    if len(spouseDetail) == 1:
+        joined = spouseDetail[0]
+    elif len(spouseDetail) == 2:
+        joined = " and ".join(spouseDetail)
+    else:
+        joined = ", ".join(spouseDetail[:-1]) + " and " + spouseDetail[-1]
+    return f"{spouse.getPronoun()} married {joined}"
 
 
 def getSpouseParents(s: str, p0: str) -> str:
@@ -271,8 +299,10 @@ def getAccolades(person: Person) -> str:
             accolades.append(a)
     if blazon := getattr(person, "blazon", set()):
         for b in blazon:
-            accolades.append(fr"includegraphics[height=\fontcharht\font`l]{{../data/arms/{b}}}")
-    return r"\,".join(fr"\{a}" for a in accolades)
+            accolades.append(
+                rf"includegraphics[height=\fontcharht\font`l]{{data/arms/{b}}}"
+            )
+    return r"\,".join(rf"\{a}" for a in accolades)
 
 
 def combineVitals(birth: str, death: str, parents: str = "") -> str:
