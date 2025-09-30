@@ -79,12 +79,16 @@ def importFamily(familyName: str, p0: str):
                 people[p].spouse.add(newId)
                 people[p].spouse.remove(s)
                 people[newId].marriage = {p: people[p].marriage[newId]}
-                people[newId].spouse |= set([s])
+                people[newId].spouse |= set([p])
                 people[newId].child |= {
                     c
                     for c in people[p].child
                     if c in people[newId].marriage[p].children
                 }
+                for child in people[p].marriage[newId].children:
+                    people[child].father, people[child].mother = (
+                        (p, newId) if people[p].gender == "M" else (newId, p)
+                    )
             if s in people:
                 people[s].spouse |= set([p])
                 people[s].marriage.update({p: people[p].marriage[s]})
