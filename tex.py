@@ -98,8 +98,8 @@ def getSources(person: Person) -> str:
     for s in person.spouse:
         if not s:
             continue
-        allSources |= people[s].sources
-    sources = [f"\\item{{{s}}}" for s in sorted(allSources)]
+        allSources.update(people.get(s, Person).sources)
+    sources = [f"\\item\\fullcite[{allSources[s]}]{{{s}}}" for s in sorted(allSources)]
     return buildSentence("\\begin{source}", *sources, "\\end{source}")
 
 
@@ -372,7 +372,7 @@ def getAncestorTag(person: Person) -> str:
 
 def generateTex(familyName: str, p0: str):
     importFamily(familyName, p0)
-    with open(rf"{os.getcwd()}\out\{familyName}_generated.tex", "w") as f:
+    with open(rf"{os.getcwd()}\tex\{familyName}_generated.tex", "w") as f:
         writeTitle(f, familyName)
         writeGenerations(f, p0)
     print(f"{len(set.union(*generations))} total ancestors")

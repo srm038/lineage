@@ -109,7 +109,7 @@ class Person:
         generation: None | int = None,
         note: str = "",
         history: str = "",
-        sources: List[str] = set(),
+        sources: Dict[str, str] = {},
         tree: Optional[bool] = None,
         army: Optional[bool] = None,
         kia: Optional[bool] = None,
@@ -134,7 +134,7 @@ class Person:
         self.generation = generation
         self.note = note
         self.history = history
-        self.sources = set(sources)
+        self.sources = sources if isinstance(sources, dict) else {s: s for s in sources}
         self.tree = tree
         self.army = army
         self.kia = kia
