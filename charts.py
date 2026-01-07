@@ -275,24 +275,25 @@ def drawHTree(area, descendants, file, initialPositions, size, p0):
         x, y = initialPositions[p]
         xc, yc = initialPositions[descendants[p]]
         key = p[:-2]
-        rx = {"M": int(size / 6), "F": int(size / 2)}[people[key]["gender"]]
+        rx = {"M": int(size / 6), "F": int(size / 2)}[people[key].gender]
         tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' rx='{rx}' width='{
             size}' height='{size}' class='tree{' primary' if p0 == p[:-2] else ''}' id='{p}' />"
         tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' width='{
-            size}' height='{size}' style='{gen(people[key]['generation'])}'/>"
-        if people[key].get("name", {}).get("last"):
-            names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key].get(
-                'name', {}).get('first')}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].get('last', '')}</tspan></text>"
+            size}' height='{size}' style='{gen(people[key].generation)}'/>"
+        if people[key].name.last:
+            names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key].name.first or ''}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].name.last or ''}</tspan></text>"
         else:
             names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{
-                x}' y='{y}'>{people[key].get('name', {}).get('first')}</tspan></text>"
+                x}' y='{y}'>{people[key].name.first}</tspan></text>"
         lines += f"<path d='M {x},{y} L {xc},{yc}' class='line'/>"
-    svg.find("svg").clear()
-    svg.find("svg").contents = bs4.BeautifulSoup(styles, "html.parser").contents
-    svg.find("svg").contents += bs4.BeautifulSoup(lines, "html.parser").contents
-    svg.find("svg").contents += bs4.BeautifulSoup(tree, "html.parser").contents
-    svg.find("svg").contents += bs4.BeautifulSoup(names, "html.parser").contents
-    svg.find("svg").attrs.update(
+    root = svg.find("svg")
+    if root is None:
+        raise RuntimeError(f"No <svg> element found in template {file}-H.svg")
+    root.clear()
+    for fragment in (styles, lines, tree, names):
+        frag_soup = bs4.BeautifulSoup(fragment, "html.parser")
+        root.extend(frag_soup)
+    root.attrs.update(
         {
             "viewBox": f"{minx - size / 2} {miny - size / 2} {maxx - minx + size} {maxy - miny + size}"
         }
@@ -323,10 +324,10 @@ def getInitialPositionsH(s, N, p0) -> Tuple[Dict, Dict, Dict]:
                 descendants.update({key: keyc})
                 ancestors.setdefault(keyc, set())
                 ancestors[keyc].add(key)
-            if people[c].get("father") in people:
-                current.add(people[c]["father"])
-            if people[c].get("mother") in people:
-                current.add(people[c]["mother"])
+            if people[c].father in people:
+                current.add(people[c].father)
+            if people[c].mother in people:
+                current.add(people[c].mother)
             current.discard(c)
     return ancestors, descendants, initialPositions
 
@@ -338,15 +339,15 @@ def positionH(d, N, s=90 + 15) -> Tuple[int, int]:
     for i, j in enumerate(d[::-1][1:]):
         if not (i + 1) % 2:
             y += (
-                (-1 if people[j]["gender"] == "M" else 1)
+                (-1 if people[j].gender == "M" else 1)
                 * s
-                * 2 ** (N - people[j]["generation"] // 2)
+                * 2 ** (N - (people[j].generation or 0) // 2)
             )
         else:
             x += (
-                (-1 if people[j]["gender"] == "M" else 1)
+                (-1 if people[j].gender == "M" else 1)
                 * s
-                * 2 ** (N - people[j]["generation"] // 2 - 1)
+                * 2 ** (N - (people[j].generation or 0) // 2 - 1)
             )
     return x, y
 
@@ -833,10 +834,10 @@ def getInitialPositionsLine(
                     descendants.update({key: keyc})
                     ancestors.setdefault(keyc, set())
                     ancestors[keyc].add(key)
-            if people[c].father in people:
-                current.add(people[c].father)
-            if people[c].mother in people:
-                current.add(people[c].mother)
+            if (father := people[c].father) and father in people:
+                current.add(father)
+            if (mother := people[c].mother) and mother in people:
+                current.add(mother)
             current.discard(c)
     return ancestors, descendants, initialPositions
 
