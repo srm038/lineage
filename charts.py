@@ -99,11 +99,35 @@ def generate_genealogy_tree(root, main=False):
     print(collapsed_tree[root])
 
 
+def normalize_positions(positions):
+    """
+    Normalize positions to bring coordinates into a manageable range
+    while preserving relative distances between nodes
+    """
+    if not positions:
+        return positions
+
+    # Find the minimum coordinates
+    min_x = min(pos[0] for pos in positions.values())
+    min_y = min(pos[1] for pos in positions.values())
+
+    # Shift all positions so that minimum becomes (0, 0) or close to it
+    normalized_positions = {}
+    for key, (x, y) in positions.items():
+        normalized_positions[key] = (x - min_x, y - min_y)
+
+    return normalized_positions
+
+
 def generateHTree(file: str, p: str, size: int = 90):
     N = len(generations) // 2
     spacing: int = size + int(size / 6)
 
     ancestors, descendants, initialPositions = getInitialPositionsH(size, N, p)
+
+    # Normalize coordinates to prevent extremely large values
+    initialPositions = normalize_positions(initialPositions)
+
     compaction = [
         horizontalCompactionLTR,
         horizontalCompactionRTL,
@@ -156,7 +180,7 @@ def verticalCompactionLeaves(
     bars = getYBars(ancestors, descendants, initialPositions)
     for b in bars:
         for node in bars[b]:
-            if node not in ancestors and descendants[node] not in bars[b]:
+            if node not in ancestors and node in descendants and descendants[node] not in bars[b]:
                 childDist = getChildDist(descendants, initialPositions, node)
                 if childDist > spacing:
                     xp, yp = initialPositions[node]
@@ -171,7 +195,7 @@ def horizontalCompactionLeaves(
     bars = getXBars(ancestors, descendants, initialPositions)
     for b in bars:
         for node in bars[b]:
-            if node not in ancestors and descendants[node] not in bars[b]:
+            if node not in ancestors and node in descendants and descendants[node] not in bars[b]:
                 childDist = getChildDist(descendants, initialPositions, node)
                 if childDist > spacing:
                     xp, yp = initialPositions[node]
@@ -196,6 +220,8 @@ def verticalCompactionTwig(
         elif len(bars[b]) == 2 and any(i not in ancestors for i in bars[b]):
             p = bars[b][0] if bars[b][1] not in ancestors else bars[b][1]
         else:
+            continue
+        if p not in descendants:  # Skip if p has no descendants
             continue
         childDist = getChildDist(descendants, initialPositions, p)
         if childDist == spacing:
@@ -227,6 +253,8 @@ def horizontalCompactionTwig(
         elif len(bars[b]) == 2 and any(i not in ancestors for i in bars[b]):
             p = bars[b][0] if bars[b][1] not in ancestors else bars[b][1]
         else:
+            continue
+        if p not in descendants:  # Skip if p has no descendants
             continue
         childDist = getChildDist(descendants, initialPositions, p)
         if childDist == spacing:
@@ -273,19 +301,34 @@ def drawHTree(area, descendants, file, initialPositions, size, p0):
     maxy = area["maxy"]
     for p in initialPositions:
         x, y = initialPositions[p]
-        xc, yc = initialPositions[descendants[p]]
-        key = p[:-2]
-        rx = {"M": int(size / 6), "F": int(size / 2)}[people[key].gender]
-        tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' rx='{rx}' width='{
-            size}' height='{size}' class='tree{' primary' if p0 == p[:-2] else ''}' id='{p}' />"
-        tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' width='{
-            size}' height='{size}' style='{gen(people[key].generation)}'/>"
-        if people[key].name.last:
-            names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key].name.first or ''}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].name.last or ''}</tspan></text>"
+        # Only draw connection lines if the node has descendants
+        if p in descendants:
+            xc, yc = initialPositions[descendants[p]]
+            key = p[:-2]
+            rx = {"M": int(size / 6), "F": int(size / 2)}[people[key].gender]
+            tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' rx='{rx}' width='{
+                size}' height='{size}' class='tree{' primary' if p0 == p[:-2] else ''}' id='{p}' />"
+            tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' width='{
+                size}' height='{size}' style='{gen(people[key].generation)}'/>"
+            if people[key].name.last:
+                names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key].name.first or ''}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].name.last or ''}</tspan></text>"
+            else:
+                names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{
+                    x}' y='{y}'>{people[key].name.first}</tspan></text>"
+            lines += f"<path d='M {x},{y} L {xc},{yc}' class='line'/>"
         else:
-            names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{
-                x}' y='{y}'>{people[key].name.first}</tspan></text>"
-        lines += f"<path d='M {x},{y} L {xc},{yc}' class='line'/>"
+            # Draw just the node without connections for leaf nodes
+            key = p[:-2]
+            rx = {"M": int(size / 6), "F": int(size / 2)}[people[key].gender]
+            tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' rx='{rx}' width='{
+                size}' height='{size}' class='tree{' primary' if p0 == p[:-2] else ''}' id='{p}' />"
+            tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' width='{
+                size}' height='{size}' style='{gen(people[key].generation)}'/>"
+            if people[key].name.last:
+                names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key].name.first or ''}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].name.last or ''}</tspan></text>"
+            else:
+                names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{
+                    x}' y='{y}'>{people[key].name.first}</tspan></text>"
     root = svg.find("svg")
     if root is None:
         raise RuntimeError(f"No <svg> element found in template {file}-H.svg")
@@ -367,6 +410,8 @@ def getHArea(initialPositions: Dict, descendants: Dict) -> Dict[str, int]:
 
 
 def getChildDist(descendants: Dict, initialPositions: Dict, p: str) -> int:
+    if p not in descendants:
+        return 0  # Return 0 if node has no descendants
     c = descendants[p]
     xp, yp = initialPositions[p]
     xc, yc = initialPositions[c]
