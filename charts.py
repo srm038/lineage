@@ -119,6 +119,147 @@ def normalize_positions(positions):
     return normalized_positions
 
 
+def find_empty_spaces(positions, descendants, ancestors, spacing):
+    """
+    Find large empty rectangular spaces in the layout that could be filled
+    """
+    if not positions:
+        return []
+
+    # Get bounding box
+    min_x = min(pos[0] for pos in positions.values())
+    max_x = max(pos[0] for pos in positions.values())
+    min_y = min(pos[1] for pos in positions.values())
+    max_y = max(pos[1] for pos in positions.values())
+
+    # Create a grid to mark occupied spaces
+    occupied = set(positions.values())
+
+    # Look for empty rectangles of sufficient size
+    empty_spaces = []
+
+    # Check for horizontal gaps
+    x_coords = sorted(set(pos[0] for pos in positions.values()))
+    for i in range(len(x_coords)-1):
+        gap_start = x_coords[i]
+        gap_end = x_coords[i+1]
+        if gap_end - gap_start > spacing:
+            # Found a horizontal gap, check vertical extent
+            y_coords = sorted(set(pos[1] for pos in positions.values()))
+            for j in range(len(y_coords)):
+                # Check if this region is mostly empty
+                empty_count = 0
+                total_check = 0
+                for x in range(int(gap_start), int(gap_end), int(spacing/2)):
+                    for y in range(int(y_coords[j]), int(y_coords[j]+spacing), int(spacing/2)):
+                        if (x, y) not in occupied:
+                            empty_count += 1
+                        total_check += 1
+
+                if total_check > 0 and empty_count/total_check > 0.5:  # More than 50% empty
+                    empty_spaces.append({
+                        'type': 'horizontal_gap',
+                        'x_range': (gap_start, gap_end),
+                        'y_pos': y_coords[j],
+                        'size': (gap_end - gap_start) * spacing
+                    })
+
+    # Similar logic for vertical gaps
+    y_coords = sorted(set(pos[1] for pos in positions.values()))
+    for i in range(len(y_coords)-1):
+        gap_start = y_coords[i]
+        gap_end = y_coords[i+1]
+        if gap_end - gap_start > spacing:
+            x_coords = sorted(set(pos[0] for pos in positions.values()))
+            for j in range(len(x_coords)):
+                # Check if this region is mostly empty
+                empty_count = 0
+                total_check = 0
+                for x in range(int(x_coords[j]), int(x_coords[j]+spacing), int(spacing/2)):
+                    for y in range(int(gap_start), int(gap_end), int(spacing/2)):
+                        if (x, y) not in occupied:
+                            empty_count += 1
+                        total_check += 1
+
+                if total_check > 0 and empty_count/total_check > 0.5:  # More than 50% empty
+                    empty_spaces.append({
+                        'type': 'vertical_gap',
+                        'y_range': (gap_start, gap_end),
+                        'x_pos': x_coords[j],
+                        'size': (gap_end - gap_start) * spacing
+                    })
+
+    return sorted(empty_spaces, key=lambda x: x['size'], reverse=True)
+
+
+def attempt_space_filling_move(positions, descendants, ancestors, empty_spaces, spacing):
+    """
+    Attempt to move groups of nodes to fill empty spaces, respecting orthogonal edge constraints
+    """
+    if not empty_spaces:
+        return positions
+
+    new_positions = positions.copy()
+
+    # For now, focus on the largest empty space
+    largest_empty = empty_spaces[0]
+
+    if largest_empty['type'] == 'horizontal_gap':
+        # For horizontal gaps, we can only shift nodes horizontally
+        # We need to ensure that parent-child connections remain orthogonal
+        gap_start = largest_empty['x_range'][0]
+
+        # Find connected components that can be moved together
+        # A connected component is a group of nodes that must move together
+        # to preserve parent-child relationships
+        processed = set()
+        for node in positions:
+            if node in processed:
+                continue
+
+            # Find the connected subtree that can move together
+            # This is complex - for now, we'll use a simpler approach
+            # Only move nodes that are to the right of the gap
+            nodes_to_the_right = [k for k, (x, y) in positions.items() if x >= gap_start]
+
+            if nodes_to_the_right:
+                # Check if moving these nodes left would violate constraints
+                # For each node, check if its parent/child relationships would be preserved
+                valid_move = True
+                min_x_in_group = min(positions[k][0] for k in nodes_to_the_right)
+
+                # Calculate maximum possible shift without violating constraints
+                max_shift = min_x_in_group - gap_start
+
+                if max_shift > 0:
+                    # Apply the shift to all nodes in the group
+                    for k in nodes_to_the_right:
+                        old_x, old_y = new_positions[k]
+                        new_positions[k] = (old_x - max_shift, old_y)
+                    break  # Only process the first valid group for now
+
+    elif largest_empty['type'] == 'vertical_gap':
+        # For vertical gaps, we can only shift nodes vertically
+        gap_start = largest_empty['y_range'][0]
+
+        nodes_below_gap = [k for k, (x, y) in positions.items() if y >= gap_start]
+
+        if nodes_below_gap:
+            # Calculate maximum possible shift
+            min_y_in_group = min(positions[k][1] for k in nodes_below_gap)
+            max_shift = min_y_in_group - gap_start
+
+            if max_shift > 0:
+                # Apply the shift to all nodes in the group
+                for k in nodes_below_gap:
+                    old_x, old_y = new_positions[k]
+                    new_positions[k] = (old_x, old_y - max_shift)
+                # Only process the first valid group for now
+                pass
+
+    return new_positions
+
+
 def generateHTree(file: str, p: str, size: int = 90):
     N = len(generations) // 2
     spacing: int = size + int(size / 6)
@@ -152,6 +293,22 @@ def generateHTree(file: str, p: str, size: int = 90):
             initialPositions = copy.deepcopy(oldPositions)
             print(getHArea(initialPositions, descendants))
             break
+
+    # Post-process to identify and fill empty spaces
+    empty_spaces = find_empty_spaces(initialPositions, descendants, ancestors, spacing)
+    if empty_spaces:
+        # Try to fill the largest empty spaces
+        improved_positions = attempt_space_filling_move(
+            initialPositions, descendants, ancestors, empty_spaces, spacing
+        )
+
+        # Only accept the improvement if it reduces the total area
+        old_area_info = getHArea(initialPositions, descendants)
+        new_area_info = getHArea(improved_positions, descendants)
+
+        if new_area_info["area"] < old_area_info["area"]:
+            initialPositions = improved_positions
+            print(f"Space filling improved area from {old_area_info['area']} to {new_area_info['area']}")
 
     area = getHArea(initialPositions, descendants)
     print(area)
@@ -351,6 +508,7 @@ def getInitialPositionsH(s, N, p0) -> Tuple[Dict, Dict, Dict]:
     ancestors = {}
     done = set()
     current = {p0}
+
     while current:
         for c in list(current):
             personDescent = descent(c, p0)
@@ -358,15 +516,39 @@ def getInitialPositionsH(s, N, p0) -> Tuple[Dict, Dict, Dict]:
                 x, y = positionH(d, N, s=s + 15)
                 key = "-".join([c, str(int(c in done))])
                 initialPositions.update({key: (x, y)})
-                xc, yc = positionH(d[1:], N)
+
                 done.add(c)
-                keyc = [i for i in initialPositions if initialPositions[i] == (xc, yc)]
-                if not keyc:
-                    continue
-                keyc = keyc[0]
-                descendants.update({key: keyc})
-                ancestors.setdefault(keyc, set())
-                ancestors[keyc].add(key)
+
+                # Process parent-child relationships based on the genealogical path
+                if len(d) > 1:  # If there's a parent in the path
+                    parent_position = positionH(d[1:], N)
+
+                    # Find the key that has the parent's position (original algorithm approach)
+                    # But we need to be more careful about which key we pick
+                    keyc_list = [i for i in initialPositions if initialPositions[i] == parent_position]
+
+                    # The original algorithm picked the first match, but we need to ensure
+                    # we pick the key that corresponds to the correct parent person
+                    parent_key = None
+                    parent_person = d[1]  # The parent person in the genealogical path
+
+                    # Look for a key that matches both the position and the expected person
+                    for possible_key in keyc_list:
+                        if possible_key.startswith(parent_person + "-"):
+                            parent_key = possible_key
+                            break
+
+                    # If we didn't find a key for the correct parent person,
+                    # fall back to the first match (original behavior)
+                    if parent_key is None and keyc_list:
+                        parent_key = keyc_list[0]
+
+                    if parent_key:
+                        # Establish the parent-child relationship
+                        # In the descendants dictionary: child -> parent
+                        descendants[key] = parent_key
+                        ancestors.setdefault(parent_key, set()).add(key)
+
             if people[c].father in people:
                 current.add(people[c].father)
             if people[c].mother in people:
