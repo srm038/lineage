@@ -1,0 +1,159 @@
+%\usepackage{fnpct}
+%\usepackage[perpage]{footmisc}
+%\renewcommand{\thefootnote}{\fnsymbol{footnote}}
+\usepackage{footnoterange}
+
+\usepackage[utf8]{inputenc}
+
+\usepackage[margin = 1in]{geometry}
+
+\usepackage{graphicx} % support the \includegraphics command and options
+\graphicspath{{assets/}{../assets/}{data/arms/}{../data/arms/}}
+
+\setlength\parindent{0.25in}
+
+\usepackage{calc}
+
+\usepackage{booktabs} % for much better looking tables
+\usepackage{array} % for better arrays (eg matrices) in maths
+\usepackage{paralist} % very flexible & customisable lists (eg. enumerate/itemize, etc.)
+\usepackage{verbatim} % adds environment for commenting out blocks of text & for better verbatim
+\usepackage{subfig} % make it possible to include more than one captioned figure/table in a single float
+% These packages are all incorporated in the memoir class to one degree or another...
+
+\usepackage{arevmath}
+\usepackage{fontspec}
+\setmainfont{Cormorant}
+
+\usepackage{textcomp}
+\usepackage{microtype}
+
+\usepackage{tikz, xcolor}
+\usepackage[all]{genealogytree}
+
+\usepackage[style=verbose, backend=biber]{biblatex}
+
+\definecolor{walesgreen}{RGB}{0,171,57}
+\definecolor{englishred}{RGB}{220,1,43}
+\definecolor{scottishblue}{RGB}{0,42,255}
+
+\gtrset{
+  template=signpost,id suffix=@a, processing=fit,
+  node size=1.75cm, level size=1cm, level distance=0.25cm, parent distance=0.25cm,
+  tcbset={
+    rounded corners
+  },
+  box={no shadow, opacityframe=0, colback=black!1, size=small, halign=center,valign=center},
+  edges={foreground=black, no background, anchoring=center},
+  p/.style={box={opacityframe=1}},
+  usa/.style={box={interior style={fill stretch image=usa.png, fill image opacity=0.15}}}
+  wales/.style={box={interior style={fill stretch image=wales.png, fill image opacity=0.15}}},
+  england/.style={box={interior style={fill stretch image=england.png, fill image opacity=0.15}}},
+  scotland/.style={box={interior style={fill stretch image=scotland.png, fill image opacity=0.15}}},
+  belgium/.style={box={interior style={fill stretch image=belgium.png, fill image opacity=0.15}}},
+  france/.style={box={interior style={fill stretch image=france.png, fill image opacity=0.15}}},
+  ireland/.style={box={interior style={fill stretch image=ireland.png, fill image opacity=0.15}}},
+  switzerland/.style={box={interior style={fill stretch image=switzerland.png, fill image opacity=0.15}}},
+  germany/.style={box={interior style={fill stretch image=germany.png, fill image opacity=0.15}}},
+}
+
+%%% HEADERS & FOOTERS
+\usepackage{fancyhdr} % This should be set AFTER setting up the page geometry
+\pagestyle{fancy} % options: empty , plain , fancy
+\renewcommand{\headrulewidth}{0pt} % customise the layout...
+\lhead{}\chead{}\rhead{}
+\lfoot{}\cfoot{\thepage}\rfoot{}
+
+\usepackage[explicit]{titlesec}
+
+\renewcommand{\thesection}{\arabic{section}}
+\titleformat{name=\section}[hang]{\bfseries}{}{0pt}{\centering Generation \thesection}[]
+\titlespacing*{name=\section}{0pt}{\baselineskip}{-0\baselineskip}
+\newcommand\generationgroup{
+\section{\texorpdfstring{}{Generation \thesection}}}
+
+%%% ToC (table of contents) APPEARANCE
+\usepackage[nottoc,notlof,notlot]{tocbibind} % Put the bibliography in the ToC
+\usepackage[titles,subfigure]{tocloft} % Alter the style of the Table of Contents
+\renewcommand{\cftsecfont}{\rmfamily\mdseries\upshape}
+\renewcommand{\cftsecpagefont}{\rmfamily\mdseries\upshape} % No bold!
+
+\usepackage{indentfirst}
+
+\usepackage[hidelinks]{hyperref}
+
+\newcommand\generation[1]{\textsuperscript{\uppercase{\emph{#1}}}}
+
+\newcounter{child}[section]
+\newcommand\newchild{\setcounter{child}{0}}
+\newcommand\childno{\stepcounter{child}\roman{child}.}
+
+\usepackage{ifthen,xspace,xstring}
+
+\newcommand\namelinkbold[2]{
+  \leavevmode\unskip \hyperref[#1]{\textbf{#2}}\textsuperscript{\labelcref{#1}}\xspace
+}
+
+\newcommand\namelink[2]{
+  \leavevmode\unskip \hyperref[x#1]{#2}\textsuperscript{\labelcref{#1}}\xspace
+}
+
+\newcommand\individual[3][0]{
+  \vspace{\baselineskip}\textbf{\Cref{#2}\ifthenelse{\equal{#1}{p}}{\iin{#2}}{}\pdfbookmark[2]{#3}{#2} \hyperref[#2]{#3}}\label{x#2}\newchild\xspace
+}
+
+\newcommand\children{\leavevmode\unskip~had the following children:\xspace}
+
+\newcommand\namesuper[2]{\hyperref[#1]{#2}\textsuperscript{\labelcref{#1}}\xspace}
+
+\setlength\parskip{0.5\baselineskip}
+
+\usepackage[capitalise]{cleveref}
+\crefname{iin}{}{}
+\crefformat{iin}{#1.}
+\creflabelformat{iin}{#1}
+
+\newcounter{iino}[chapter]
+\DeclareRobustCommand{\iin}[1]{%
+  \refstepcounter{iino}%
+\label[iin]{#1}}
+
+\newcommand\childlist[4][\hfill{}]{
+  \begin{minipage}[t]{\parindent}\flushleft
+    \ifthenelse{\equal{#1}{+}}{\hyperref[x#2]{#1}\iin{#2}}{\hfill{}}
+  \end{minipage}
+  \begin{minipage}[t]{\parindent}\flushright
+    \ifthenelse{\equal{#1}{+}}{\labelcref{#2}}{\hfill{}}
+  \end{minipage}
+  \begin{minipage}[t]{1.5\parindent}\flushright
+    \childno
+  \end{minipage}
+  \begin{minipage}[t]{0.5\parindent}
+    \hfill{}
+  \end{minipage}
+  \begin{minipage}[t]{\textwidth-5\parindent}
+    \ifthenelse{\equal{#1}{+}}{\hyperref[x#2]{\textsc{#3}}}{\textsc{#3}}\ifthenelse{\equal{#4}{.}}{.}{, #4}
+  \end{minipage}%\ifthenelse{\equal{#1}{+}}{\iin{#2}}{}
+
+}
+
+\renewcommand{\th}[0]{\textsuperscript{th}\xspace}
+\newcommand{\st}[0]{\textsuperscript{st}\xspace}
+\newcommand{\nd}[0]{\textsuperscript{nd}\xspace}
+\newcommand{\rd}[0]{\textsuperscript{rd}\xspace}
+
+\newcommand\army{\includegraphics[height=1.5ex]{eagle}\xspace}
+\newcommand\martyr{\includegraphics[height=1.5ex]{palm}\xspace}
+\newcommand\templar{\includegraphics[height=1.5ex]{templar}\xspace}
+\newcommand\kia{\includegraphics[height=1.5ex]{swords}\xspace}
+\newcommand\mason{\includegraphics[height=1.5ex]{mason}\xspace}
+\newcommand\buried{\includegraphics[height=1.5ex]{tomb}\hspace{0.5\parindent}}
+
+\usepackage{enumitem}
+\setlist{nosep}
+\newlist{source}{itemize}{1}
+\setlist[source]{label=\textbullet, align = left, left= \parindent .. 2\parindent}
+
+\usepackage{imakeidx}
+\indexsetup{othercode=\small}
+\makeindex[program=makeindex,columns=3,options={-s index_style.ist}]
