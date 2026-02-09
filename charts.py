@@ -509,45 +509,46 @@ def getInitialPositionsH(s, N, p0) -> Tuple[Dict, Dict, Dict]:
     done = set()
     current = {p0}
 
+    personPositionMap = {}
+
     while current:
         for c in list(current):
             personDescent = descent(c, p0)
             for d in personDescent:
                 x, y = positionH(d, N, s=s + 15)
-                key = "-".join([c, str(int(c in done))])
-                initialPositions.update({key: (x, y)})
+                pos = (x, y)
+
+                personPosKey = (c, pos)
+                if personPosKey in personPositionMap:
+                    key = personPositionMap[personPosKey]
+                else:
+                    existingKeysForPerson = [k for k in initialPositions.keys() if k.startswith(c + "-")]
+                    suffix = str(len(existingKeysForPerson))
+                    key = f"{c}-{suffix}"
+
+                    personPositionMap[personPosKey] = key
+                    initialPositions[key] = (x, y)
 
                 done.add(c)
 
-                # Process parent-child relationships based on the genealogical path
-                if len(d) > 1:  # If there's a parent in the path
-                    parent_position = positionH(d[1:], N)
+                if len(d) > 1:
+                    parentPosition = positionH(d[1:], N)
+                    parentPerson = d[1]
 
-                    # Find the key that has the parent's position (original algorithm approach)
-                    # But we need to be more careful about which key we pick
-                    keyc_list = [i for i in initialPositions if initialPositions[i] == parent_position]
+                    parentPosKey = (parentPerson, parentPosition)
+                    if parentPosKey in personPositionMap:
+                        parentKey = personPositionMap[parentPosKey]
+                    else:
+                        existingParentKeys = [k for k in initialPositions.keys() if k.startswith(parentPerson + "-")]
+                        parentSuffix = str(len(existingParentKeys))
+                        parentKey = f"{parentPerson}-{parentSuffix}"
 
-                    # The original algorithm picked the first match, but we need to ensure
-                    # we pick the key that corresponds to the correct parent person
-                    parent_key = None
-                    parent_person = d[1]  # The parent person in the genealogical path
+                        personPositionMap[parentPosKey] = parentKey
+                        initialPositions[parentKey] = parentPosition
 
-                    # Look for a key that matches both the position and the expected person
-                    for possible_key in keyc_list:
-                        if possible_key.startswith(parent_person + "-"):
-                            parent_key = possible_key
-                            break
-
-                    # If we didn't find a key for the correct parent person,
-                    # fall back to the first match (original behavior)
-                    if parent_key is None and keyc_list:
-                        parent_key = keyc_list[0]
-
-                    if parent_key:
-                        # Establish the parent-child relationship
-                        # In the descendants dictionary: child -> parent
-                        descendants[key] = parent_key
-                        ancestors.setdefault(parent_key, set()).add(key)
+                    if key not in descendants:
+                        descendants[key] = parentKey
+                        ancestors.setdefault(parentKey, set()).add(key)
 
             if people[c].father in people:
                 current.add(people[c].father)
