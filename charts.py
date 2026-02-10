@@ -1,5 +1,6 @@
 import copy
 import datetime
+import itertools
 import math
 import os
 from typing import Any, Dict, Iterable, List, Set, Tuple, Union
@@ -326,37 +327,75 @@ def generateHTree(file: str, p: str, size: int = 90):
 
     ancestors, descendants, initialPositions = getInitialPositionsH(size, N, p)
 
-    # Normalize coordinates to prevent extremely large values
     initialPositions = normalize_positions(initialPositions)
 
-    compaction = [
+    funcs = [
         horizontalCompactionLTR,
         horizontalCompactionRTL,
         verticalCompactionTTB,
         verticalCompactionBTT,
     ]
+
+    best_pos = copy.deepcopy(initialPositions)
+    best_area = getHArea(initialPositions, descendants)
+    
+    # Exhaustive search through permutations
+    for perm in itertools.permutations(funcs):
+        for edge_order in [(False, True), (True, False), (False, True, False), (True, False, True)]:
+            test_pos = copy.deepcopy(initialPositions)
+            
+            for outerEdge in edge_order:
+                for f in perm:
+                    test_pos = f(test_pos, descendants, ancestors, outerEdge)
+                    test_pos = compactTwigsLeaves(ancestors, descendants, test_pos, spacing)
+            
+            test_area = getHArea(test_pos, descendants)
+            
+            if test_area["edge"] < best_area["edge"]:
+                best_pos = copy.deepcopy(test_pos)
+                best_area = test_area
+    
+    # Try shorter sequences too
+    for r in range(1, 3):
+        for perm in itertools.permutations(funcs, r):
+            for edge_order in [(False, True), (True, False)]:
+                test_pos = copy.deepcopy(initialPositions)
+                
+                for outerEdge in edge_order:
+                    for f in perm:
+                        test_pos = f(test_pos, descendants, ancestors, outerEdge)
+                        test_pos = compactTwigsLeaves(ancestors, descendants, test_pos, spacing)
+                
+                test_area = getHArea(test_pos, descendants)
+                
+                if test_area["edge"] < best_area["edge"]:
+                    best_pos = copy.deepcopy(test_pos)
+                    best_area = test_area
+    
+    # Try original approach too
+    curr_pos = copy.deepcopy(initialPositions)
+    compaction = funcs[:]
     while True:
-        oldPositions = normalize_positions(initialPositions)
+        oldPos = normalize_positions(curr_pos)
         compaction = compaction[::-1]
         for outerEdge in [True, False]:
             for f in compaction:
-                initialPositions = f(
-                    initialPositions, descendants, ancestors, outerEdge
-                )
-                initialPositions = compactTwigsLeaves(
-                    ancestors, descendants, initialPositions, spacing
-                )
+                curr_pos = f(curr_pos, descendants, ancestors, outerEdge)
+                curr_pos = compactTwigsLeaves(ancestors, descendants, curr_pos, spacing)
         if (
-            getHArea(oldPositions, descendants)["edge"]
-            <= getHArea(initialPositions, descendants)["edge"]
+            getHArea(oldPos, descendants)["edge"]
+            <= getHArea(curr_pos, descendants)["edge"]
         ):
-            initialPositions = copy.deepcopy(oldPositions)
-            print(getHArea(initialPositions, descendants))
+            curr_pos = copy.deepcopy(oldPos)
             break
+    
+    curr_area = getHArea(curr_pos, descendants)
+    if curr_area["edge"] < best_area["edge"]:
+        best_pos = copy.deepcopy(curr_pos)
+        best_area = curr_area
 
-    area = getHArea(initialPositions, descendants)
-    print(area)
-    drawHTree(area, descendants, file, initialPositions, size, p)
+    print(best_area)
+    drawHTree(best_area, descendants, file, best_pos, size, p)
 
 
 def compactTwigsLeaves(ancestors, descendants, initialPositions, spacing):
