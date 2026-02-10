@@ -99,18 +99,6 @@ def generate_genealogy_tree(root, main=False):
     print(collapsed_tree[root])
 
 
-def getTotalEdgeLength(positions, descendants):
-    total_length = 0
-    for child, parent in descendants.items():
-        if child in positions and parent in positions:
-            child_pos = positions[child]
-            parent_pos = positions[parent]
-            # Manhattan distance for orthogonal layout
-            dist = abs(child_pos[0] - parent_pos[0]) + abs(child_pos[1] - parent_pos[1])
-            total_length += dist
-    return total_length
-
-
 def hasCollisionAtPosition(positions, node, spacing):
     node_pos = positions[node]
     node_x, node_y = node_pos
@@ -120,7 +108,10 @@ def hasCollisionAtPosition(positions, node, spacing):
             continue  # Skip self
 
         # Check if positions are too close (indicating overlap)
-        if abs(node_x - other_x) < spacing * 0.8 and abs(node_y - other_y) < spacing * 0.8:
+        if (
+            abs(node_x - other_x) < spacing * 0.8
+            and abs(node_y - other_y) < spacing * 0.8
+        ):
             return True  # Collision detected
 
     return False
@@ -134,8 +125,6 @@ def countDescendantsNode(node, ancestors):
     for child in ancestors[node]:
         count += 1 + countDescendantsNode(child, ancestors)
     return count
-
-
 
 
 def findLinearChain(start_node, positions, descendants, ancestors):
@@ -152,110 +141,6 @@ def findLinearChain(start_node, positions, descendants, ancestors):
             break
 
     return chain
-
-
-def optimize_edge_lengths(positions, descendants, ancestors, spacing):
-    import copy
-    new_positions = copy.deepcopy(positions)
-
-    initial_edge_length = getTotalEdgeLength(new_positions, descendants)
-
-    # Create a list of nodes with their descendant counts to process from leaves inward
-    node_hierarchy = []
-    for node in positions:
-        desc_count = countDescendantsNode(node, ancestors)
-        node_hierarchy.append((desc_count, node))
-
-    # Sort by descendant count (leaves first, then nodes with more descendants)
-    node_hierarchy.sort()
-
-    # Process nodes from leaves inward
-    for _, node in node_hierarchy:
-        if node not in descendants:
-            continue  # This node doesn't have a parent, so skip
-
-        parent = descendants[node]
-        if parent not in new_positions:
-            continue
-
-        # Find if this node is part of a linear chain
-        chain = findLinearChain(node, positions, descendants, ancestors)
-
-        # If it's a chain of more than one node, try to move the whole chain
-        if len(chain) > 1:
-            node_pos = new_positions[chain[0]]
-            parent_pos = new_positions[parent]
-
-            curr_dist = abs(node_pos[0] - parent_pos[0]) + abs(node_pos[1] - parent_pos[1])
-
-            # Try moving the entire chain
-            for dx, dy in [(-spacing//2, 0), (spacing//2, 0), (0, -spacing//2), (0, spacing//2)]:
-                test_positions = copy.deepcopy(new_positions)
-
-                # Move the entire chain
-                for chain_node in chain:
-                    if chain_node in test_positions:
-                        orig_x, orig_y = new_positions[chain_node]
-                        test_positions[chain_node] = (orig_x + dx, orig_y + dy)
-
-                # Check if this move causes collisions with other nodes
-                collision = False
-                for chain_node in chain:
-                    if hasCollisionAtPosition(test_positions, chain_node, spacing):
-                        collision = True
-                        break
-
-                if not collision:
-                    new_node_pos = test_positions[chain[0]]
-                    new_dist = abs(new_node_pos[0] - parent_pos[0]) + abs(new_node_pos[1] - parent_pos[1])
-                    if new_dist < curr_dist:
-                        test_length = getTotalEdgeLength(test_positions, descendants)
-                        if test_length < initial_edge_length:
-                            new_positions = test_positions
-                            initial_edge_length = test_length
-        else:
-            # Single node - process as before
-            node_pos = new_positions[node]
-            parent_pos = new_positions[parent]
-
-            curr_dist = abs(node_pos[0] - parent_pos[0]) + abs(node_pos[1] - parent_pos[1])
-
-            best_pos = node_pos
-            best_length = initial_edge_length
-
-            # Try moving in x direction
-            for dx in [-spacing//2, spacing//2]:
-                test_pos = (node_pos[0] + dx, node_pos[1])
-                test_positions = copy.deepcopy(new_positions)
-                test_positions[node] = test_pos
-
-                if not hasCollisionAtPosition(test_positions, node, spacing):
-                    new_dist = abs(test_pos[0] - parent_pos[0]) + abs(test_pos[1] - parent_pos[1])
-                    if new_dist < curr_dist:
-                        test_length = getTotalEdgeLength(test_positions, descendants)
-                        if test_length < best_length:
-                            best_pos = test_pos
-                            best_length = test_length
-
-            # Try moving in y direction
-            for dy in [-spacing//2, spacing//2]:
-                test_pos = (node_pos[0], node_pos[1] + dy)
-                test_positions = copy.deepcopy(new_positions)
-                test_positions[node] = test_pos
-
-                if not hasCollisionAtPosition(test_positions, node, spacing):
-                    new_dist = abs(test_pos[0] - parent_pos[0]) + abs(test_pos[1] - parent_pos[1])
-                    if new_dist < curr_dist:
-                        test_length = getTotalEdgeLength(test_positions, descendants)
-                        if test_length < best_length:
-                            best_pos = test_pos
-                            best_length = test_length
-
-            if best_pos != node_pos:
-                new_positions[node] = best_pos
-                initial_edge_length = best_length
-
-    return new_positions
 
 
 def normalize_positions(positions):
@@ -299,9 +184,9 @@ def find_empty_spaces(positions, descendants, ancestors, spacing):
 
     # Check for horizontal gaps
     x_coords = sorted(set(pos[0] for pos in positions.values()))
-    for i in range(len(x_coords)-1):
+    for i in range(len(x_coords) - 1):
         gap_start = x_coords[i]
-        gap_end = x_coords[i+1]
+        gap_end = x_coords[i + 1]
         if gap_end - gap_start > spacing:
             # Found a horizontal gap, check vertical extent
             y_coords = sorted(set(pos[1] for pos in positions.values()))
@@ -309,49 +194,63 @@ def find_empty_spaces(positions, descendants, ancestors, spacing):
                 # Check if this region is mostly empty
                 empty_count = 0
                 total_check = 0
-                for x in range(int(gap_start), int(gap_end), int(spacing/2)):
-                    for y in range(int(y_coords[j]), int(y_coords[j]+spacing), int(spacing/2)):
+                for x in range(int(gap_start), int(gap_end), int(spacing / 2)):
+                    for y in range(
+                        int(y_coords[j]), int(y_coords[j] + spacing), int(spacing / 2)
+                    ):
                         if (x, y) not in occupied:
                             empty_count += 1
                         total_check += 1
 
-                if total_check > 0 and empty_count/total_check > 0.5:  # More than 50% empty
-                    empty_spaces.append({
-                        'type': 'horizontal_gap',
-                        'x_range': (gap_start, gap_end),
-                        'y_pos': y_coords[j],
-                        'size': (gap_end - gap_start) * spacing
-                    })
+                if (
+                    total_check > 0 and empty_count / total_check > 0.5
+                ):  # More than 50% empty
+                    empty_spaces.append(
+                        {
+                            "type": "horizontal_gap",
+                            "x_range": (gap_start, gap_end),
+                            "y_pos": y_coords[j],
+                            "size": (gap_end - gap_start) * spacing,
+                        }
+                    )
 
     # Similar logic for vertical gaps
     y_coords = sorted(set(pos[1] for pos in positions.values()))
-    for i in range(len(y_coords)-1):
+    for i in range(len(y_coords) - 1):
         gap_start = y_coords[i]
-        gap_end = y_coords[i+1]
+        gap_end = y_coords[i + 1]
         if gap_end - gap_start > spacing:
             x_coords = sorted(set(pos[0] for pos in positions.values()))
             for j in range(len(x_coords)):
                 # Check if this region is mostly empty
                 empty_count = 0
                 total_check = 0
-                for x in range(int(x_coords[j]), int(x_coords[j]+spacing), int(spacing/2)):
-                    for y in range(int(gap_start), int(gap_end), int(spacing/2)):
+                for x in range(
+                    int(x_coords[j]), int(x_coords[j] + spacing), int(spacing / 2)
+                ):
+                    for y in range(int(gap_start), int(gap_end), int(spacing / 2)):
                         if (x, y) not in occupied:
                             empty_count += 1
                         total_check += 1
 
-                if total_check > 0 and empty_count/total_check > 0.5:  # More than 50% empty
-                    empty_spaces.append({
-                        'type': 'vertical_gap',
-                        'y_range': (gap_start, gap_end),
-                        'x_pos': x_coords[j],
-                        'size': (gap_end - gap_start) * spacing
-                    })
+                if (
+                    total_check > 0 and empty_count / total_check > 0.5
+                ):  # More than 50% empty
+                    empty_spaces.append(
+                        {
+                            "type": "vertical_gap",
+                            "y_range": (gap_start, gap_end),
+                            "x_pos": x_coords[j],
+                            "size": (gap_end - gap_start) * spacing,
+                        }
+                    )
 
-    return sorted(empty_spaces, key=lambda x: x['size'], reverse=True)
+    return sorted(empty_spaces, key=lambda x: x["size"], reverse=True)
 
 
-def attempt_space_filling_move(positions, descendants, ancestors, empty_spaces, spacing):
+def attempt_space_filling_move(
+    positions, descendants, ancestors, empty_spaces, spacing
+):
     """
     Attempt to move groups of nodes to fill empty spaces, respecting orthogonal edge constraints
     """
@@ -363,10 +262,10 @@ def attempt_space_filling_move(positions, descendants, ancestors, empty_spaces, 
     # For now, focus on the largest empty space
     largest_empty = empty_spaces[0]
 
-    if largest_empty['type'] == 'horizontal_gap':
+    if largest_empty["type"] == "horizontal_gap":
         # For horizontal gaps, we can only shift nodes horizontally
         # We need to ensure that parent-child connections remain orthogonal
-        gap_start = largest_empty['x_range'][0]
+        gap_start = largest_empty["x_range"][0]
 
         # Find connected components that can be moved together
         # A connected component is a group of nodes that must move together
@@ -379,7 +278,9 @@ def attempt_space_filling_move(positions, descendants, ancestors, empty_spaces, 
             # Find the connected subtree that can move together
             # This is complex - for now, we'll use a simpler approach
             # Only move nodes that are to the right of the gap
-            nodes_to_the_right = [k for k, (x, y) in positions.items() if x >= gap_start]
+            nodes_to_the_right = [
+                k for k, (x, y) in positions.items() if x >= gap_start
+            ]
 
             if nodes_to_the_right:
                 # Check if moving these nodes left would violate constraints
@@ -397,9 +298,9 @@ def attempt_space_filling_move(positions, descendants, ancestors, empty_spaces, 
                         new_positions[k] = (old_x - max_shift, old_y)
                     break  # Only process the first valid group for now
 
-    elif largest_empty['type'] == 'vertical_gap':
+    elif largest_empty["type"] == "vertical_gap":
         # For vertical gaps, we can only shift nodes vertically
-        gap_start = largest_empty['y_range'][0]
+        gap_start = largest_empty["y_range"][0]
 
         nodes_below_gap = [k for k, (x, y) in positions.items() if y >= gap_start]
 
@@ -435,7 +336,7 @@ def generateHTree(file: str, p: str, size: int = 90):
         verticalCompactionBTT,
     ]
     while True:
-        oldPositions = copy.deepcopy(initialPositions)
+        oldPositions = normalize_positions(initialPositions)
         compaction = compaction[::-1]
         for outerEdge in [True, False]:
             for f in compaction:
@@ -446,31 +347,12 @@ def generateHTree(file: str, p: str, size: int = 90):
                     ancestors, descendants, initialPositions, spacing
                 )
         if (
-            getHArea(oldPositions, descendants)["area"]
-            <= getHArea(initialPositions, descendants)["area"]
+            getHArea(oldPositions, descendants)["edge"]
+            <= getHArea(initialPositions, descendants)["edge"]
         ):
             initialPositions = copy.deepcopy(oldPositions)
             print(getHArea(initialPositions, descendants))
             break
-
-    # Edge length optimization pass
-    initialPositions = optimize_edge_lengths(initialPositions, descendants, ancestors, spacing)
-
-    # Post-process to identify and fill empty spaces
-    empty_spaces = find_empty_spaces(initialPositions, descendants, ancestors, spacing)
-    if empty_spaces:
-        # Try to fill the largest empty spaces
-        improved_positions = attempt_space_filling_move(
-            initialPositions, descendants, ancestors, empty_spaces, spacing
-        )
-
-        # Only accept the improvement if it reduces the total area
-        old_area_info = getHArea(initialPositions, descendants)
-        new_area_info = getHArea(improved_positions, descendants)
-
-        if new_area_info["area"] < old_area_info["area"]:
-            initialPositions = improved_positions
-            print(f"Space filling improved area from {old_area_info['area']} to {new_area_info['area']}")
 
     area = getHArea(initialPositions, descendants)
     print(area)
@@ -499,7 +381,11 @@ def verticalCompactionLeaves(
     bars = getYBars(ancestors, descendants, initialPositions)
     for b in bars:
         for node in bars[b]:
-            if node not in ancestors and node in descendants and descendants[node] not in bars[b]:
+            if (
+                node not in ancestors
+                and node in descendants
+                and descendants[node] not in bars[b]
+            ):
                 childDist = getChildDist(descendants, initialPositions, node)
                 if childDist > spacing:
                     xp, yp = initialPositions[node]
@@ -514,7 +400,11 @@ def horizontalCompactionLeaves(
     bars = getXBars(ancestors, descendants, initialPositions)
     for b in bars:
         for node in bars[b]:
-            if node not in ancestors and node in descendants and descendants[node] not in bars[b]:
+            if (
+                node not in ancestors
+                and node in descendants
+                and descendants[node] not in bars[b]
+            ):
                 childDist = getChildDist(descendants, initialPositions, node)
                 if childDist > spacing:
                     xp, yp = initialPositions[node]
@@ -684,7 +574,9 @@ def getInitialPositionsH(s, N, p0) -> Tuple[Dict, Dict, Dict]:
                 if personPosKey in personPositionMap:
                     key = personPositionMap[personPosKey]
                 else:
-                    existingKeysForPerson = [k for k in initialPositions.keys() if k.startswith(c + "-")]
+                    existingKeysForPerson = [
+                        k for k in initialPositions.keys() if k.startswith(c + "-")
+                    ]
                     suffix = str(len(existingKeysForPerson))
                     key = f"{c}-{suffix}"
 
@@ -701,7 +593,11 @@ def getInitialPositionsH(s, N, p0) -> Tuple[Dict, Dict, Dict]:
                     if parentPosKey in personPositionMap:
                         parentKey = personPositionMap[parentPosKey]
                     else:
-                        existingParentKeys = [k for k in initialPositions.keys() if k.startswith(parentPerson + "-")]
+                        existingParentKeys = [
+                            k
+                            for k in initialPositions.keys()
+                            if k.startswith(parentPerson + "-")
+                        ]
                         parentSuffix = str(len(existingParentKeys))
                         parentKey = f"{parentPerson}-{parentSuffix}"
 
@@ -745,13 +641,13 @@ def getHArea(initialPositions: Dict, descendants: Dict) -> Dict[str, int]:
     maxx = max([p[0] for p in initialPositions.values()])
     miny = min([p[1] for p in initialPositions.values()])
     maxy = max([p[1] for p in initialPositions.values()])
-    area = 0
+    edgeTotal = 0
     for p in initialPositions:
         if p not in descendants:
             continue
         edge = getChildDist(descendants, initialPositions, p)
-        area += edge
-    return {"maxx": maxx, "maxy": maxy, "minx": minx, "miny": miny, "area": area}
+        edgeTotal += edge
+    return {"maxx": maxx, "maxy": maxy, "minx": minx, "miny": miny, "edge": edgeTotal}
 
 
 def getChildDist(descendants: Dict, initialPositions: Dict, p: str) -> int:
