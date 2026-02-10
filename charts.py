@@ -99,6 +99,165 @@ def generate_genealogy_tree(root, main=False):
     print(collapsed_tree[root])
 
 
+def getTotalEdgeLength(positions, descendants):
+    total_length = 0
+    for child, parent in descendants.items():
+        if child in positions and parent in positions:
+            child_pos = positions[child]
+            parent_pos = positions[parent]
+            # Manhattan distance for orthogonal layout
+            dist = abs(child_pos[0] - parent_pos[0]) + abs(child_pos[1] - parent_pos[1])
+            total_length += dist
+    return total_length
+
+
+def hasCollisionAtPosition(positions, node, spacing):
+    node_pos = positions[node]
+    node_x, node_y = node_pos
+
+    for other_node, (other_x, other_y) in positions.items():
+        if other_node == node:
+            continue  # Skip self
+
+        # Check if positions are too close (indicating overlap)
+        if abs(node_x - other_x) < spacing * 0.8 and abs(node_y - other_y) < spacing * 0.8:
+            return True  # Collision detected
+
+    return False
+
+
+def countDescendantsNode(node, ancestors):
+    if node not in ancestors or not ancestors[node]:
+        return 0
+
+    count = 0
+    for child in ancestors[node]:
+        count += 1 + countDescendantsNode(child, ancestors)
+    return count
+
+
+
+
+def findLinearChain(start_node, positions, descendants, ancestors):
+    chain = [start_node]
+    current = start_node
+
+    # Extend forward (toward children) as long as each node has exactly one child
+    while current in ancestors and len(ancestors[current]) == 1:
+        child = list(ancestors[current])[0]
+        if child in positions:
+            chain.append(child)
+            current = child
+        else:
+            break
+
+    return chain
+
+
+def optimize_edge_lengths(positions, descendants, ancestors, spacing):
+    import copy
+    new_positions = copy.deepcopy(positions)
+
+    initial_edge_length = getTotalEdgeLength(new_positions, descendants)
+
+    # Create a list of nodes with their descendant counts to process from leaves inward
+    node_hierarchy = []
+    for node in positions:
+        desc_count = countDescendantsNode(node, ancestors)
+        node_hierarchy.append((desc_count, node))
+
+    # Sort by descendant count (leaves first, then nodes with more descendants)
+    node_hierarchy.sort()
+
+    # Process nodes from leaves inward
+    for _, node in node_hierarchy:
+        if node not in descendants:
+            continue  # This node doesn't have a parent, so skip
+
+        parent = descendants[node]
+        if parent not in new_positions:
+            continue
+
+        # Find if this node is part of a linear chain
+        chain = findLinearChain(node, positions, descendants, ancestors)
+
+        # If it's a chain of more than one node, try to move the whole chain
+        if len(chain) > 1:
+            node_pos = new_positions[chain[0]]
+            parent_pos = new_positions[parent]
+
+            curr_dist = abs(node_pos[0] - parent_pos[0]) + abs(node_pos[1] - parent_pos[1])
+
+            # Try moving the entire chain
+            for dx, dy in [(-spacing//2, 0), (spacing//2, 0), (0, -spacing//2), (0, spacing//2)]:
+                test_positions = copy.deepcopy(new_positions)
+
+                # Move the entire chain
+                for chain_node in chain:
+                    if chain_node in test_positions:
+                        orig_x, orig_y = new_positions[chain_node]
+                        test_positions[chain_node] = (orig_x + dx, orig_y + dy)
+
+                # Check if this move causes collisions with other nodes
+                collision = False
+                for chain_node in chain:
+                    if hasCollisionAtPosition(test_positions, chain_node, spacing):
+                        collision = True
+                        break
+
+                if not collision:
+                    new_node_pos = test_positions[chain[0]]
+                    new_dist = abs(new_node_pos[0] - parent_pos[0]) + abs(new_node_pos[1] - parent_pos[1])
+                    if new_dist < curr_dist:
+                        test_length = getTotalEdgeLength(test_positions, descendants)
+                        if test_length < initial_edge_length:
+                            new_positions = test_positions
+                            initial_edge_length = test_length
+        else:
+            # Single node - process as before
+            node_pos = new_positions[node]
+            parent_pos = new_positions[parent]
+
+            curr_dist = abs(node_pos[0] - parent_pos[0]) + abs(node_pos[1] - parent_pos[1])
+
+            best_pos = node_pos
+            best_length = initial_edge_length
+
+            # Try moving in x direction
+            for dx in [-spacing//2, spacing//2]:
+                test_pos = (node_pos[0] + dx, node_pos[1])
+                test_positions = copy.deepcopy(new_positions)
+                test_positions[node] = test_pos
+
+                if not hasCollisionAtPosition(test_positions, node, spacing):
+                    new_dist = abs(test_pos[0] - parent_pos[0]) + abs(test_pos[1] - parent_pos[1])
+                    if new_dist < curr_dist:
+                        test_length = getTotalEdgeLength(test_positions, descendants)
+                        if test_length < best_length:
+                            best_pos = test_pos
+                            best_length = test_length
+
+            # Try moving in y direction
+            for dy in [-spacing//2, spacing//2]:
+                test_pos = (node_pos[0], node_pos[1] + dy)
+                test_positions = copy.deepcopy(new_positions)
+                test_positions[node] = test_pos
+
+                if not hasCollisionAtPosition(test_positions, node, spacing):
+                    new_dist = abs(test_pos[0] - parent_pos[0]) + abs(test_pos[1] - parent_pos[1])
+                    if new_dist < curr_dist:
+                        test_length = getTotalEdgeLength(test_positions, descendants)
+                        if test_length < best_length:
+                            best_pos = test_pos
+                            best_length = test_length
+
+            if best_pos != node_pos:
+                new_positions[node] = best_pos
+                initial_edge_length = best_length
+
+    return new_positions
+
+
 def normalize_positions(positions):
     """
     Normalize positions to bring coordinates into a manageable range
@@ -293,6 +452,9 @@ def generateHTree(file: str, p: str, size: int = 90):
             initialPositions = copy.deepcopy(oldPositions)
             print(getHArea(initialPositions, descendants))
             break
+
+    # Edge length optimization pass
+    initialPositions = optimize_edge_lengths(initialPositions, descendants, ancestors, spacing)
 
     # Post-process to identify and fill empty spaces
     empty_spaces = find_empty_spaces(initialPositions, descendants, ancestors, spacing)
