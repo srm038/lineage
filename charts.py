@@ -351,13 +351,13 @@ def generateHTree(file: str, p: str, size: int = 90):
                 pass
             else:
                 # Determine visibility graphs for all directions
-                x_bars = getXBars(ancestors, descendants, positions)
-                y_bars = getYBars(ancestors, descendants, positions)
+                # x_bars = getXBars(ancestors, descendants, positions)
+                # y_bars = getYBars(ancestors, descendants, positions)
 
-                ltr_visibility = getVisibilityLTR(x_bars, positions)
-                rtl_visibility = getVisibilityRTL(x_bars, positions)
-                ttb_visibility = getVisibilityTTB(y_bars, positions)
-                btt_visibility = getVisibilityBTT(y_bars, positions)
+                # ltr_visibility = getVisibilityLTR(x_bars, positions)
+                # rtl_visibility = getVisibilityRTL(x_bars, positions)
+                # ttb_visibility = getVisibilityTTB(y_bars, positions)
+                # btt_visibility = getVisibilityBTT(y_bars, positions)
                 # This is a non-leaf node - move towards its descendant with ancestors
                 target = descendants[node]
                 if target in positions:
@@ -366,13 +366,8 @@ def generateHTree(file: str, p: str, size: int = 90):
                         node,
                         target,
                         ancestors,
+                        descendants,
                         spacing,
-                        x_bars,
-                        y_bars,
-                        ltr_visibility,
-                        rtl_visibility,
-                        ttb_visibility,
-                        btt_visibility,
                     )
 
         # Check if positions changed significantly (convergence)
@@ -392,6 +387,7 @@ def generateHTree(file: str, p: str, size: int = 90):
     area = getHArea(positions, descendants)
     print(area)
     drawHTree(area, descendants, file, positions, size, p)
+    return ancestors, descendants, positions, ordered_nodes
 
 
 def orderNodesByAncestors(ancestors, positions):
@@ -576,13 +572,8 @@ def moveNodeAndAncestorsTowardsDescendant(
     node,
     target,
     ancestors,
+    descendants,
     spacing,
-    x_bars,
-    y_bars,
-    ltr_visibility,
-    rtl_visibility,
-    ttb_visibility,
-    btt_visibility,
 ):
     """Move a node and its ancestors toward the target by calculating distance from all ancestors"""
     if node not in positions or target not in positions:
@@ -612,6 +603,15 @@ def moveNodeAndAncestorsTowardsDescendant(
     else:
         distance_to_move = abs(dy)
         direction_multiplier = 1 if dy > 0 else -1  # Positive for down, negative for up
+
+    # Determine visibility graphs for all directions
+    x_bars = getXBars(ancestors, descendants, positions)
+    y_bars = getYBars(ancestors, descendants, positions)
+
+    ltr_visibility = getVisibilityLTR(x_bars, positions)
+    rtl_visibility = getVisibilityRTL(x_bars, positions)
+    ttb_visibility = getVisibilityTTB(y_bars, positions)
+    btt_visibility = getVisibilityBTT(y_bars, positions)
 
     # Apply movement based on primary direction
     if is_horizontal_primary and abs(dx) > 0.1:
@@ -643,9 +643,6 @@ def moveNodeAndAncestorsTowardsDescendant(
                                     0,
                                     visible_x - positions[check_node][0] - spacing,
                                 ),
-                            )
-                            print(
-                                f"{check_node} {positions[check_node][0]} -> {visible_x} ({max_horizontal_move})"
                             )
                     elif (
                         dx < 0 and check_node_x_bar in rtl_visibility
