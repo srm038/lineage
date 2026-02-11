@@ -327,75 +327,416 @@ def generateHTree(file: str, p: str, size: int = 90):
 
     ancestors, descendants, initialPositions = getInitialPositionsH(size, N, p)
 
-    initialPositions = normalize_positions(initialPositions)
+    print(getHArea(initialPositions, descendants))
 
-    funcs = [
-        horizontalCompactionLTR,
-        horizontalCompactionRTL,
-        verticalCompactionTTB,
-        verticalCompactionBTT,
-    ]
+    # Order nodes by number of ancestors (upstream nodes)
+    ordered_nodes = orderNodesByAncestors(ancestors, initialPositions)
 
-    best_pos = copy.deepcopy(initialPositions)
-    best_area = getHArea(initialPositions, descendants)
-    
-    # Exhaustive search through permutations
-    for perm in itertools.permutations(funcs):
-        for edge_order in [(False, True), (True, False), (False, True, False), (True, False, True)]:
-            test_pos = copy.deepcopy(initialPositions)
-            
-            for outerEdge in edge_order:
-                for f in perm:
-                    test_pos = f(test_pos, descendants, ancestors, outerEdge)
-                    test_pos = compactTwigsLeaves(ancestors, descendants, test_pos, spacing)
-            
-            test_area = getHArea(test_pos, descendants)
-            
-            if test_area["edge"] < best_area["edge"]:
-                best_pos = copy.deepcopy(test_pos)
-                best_area = test_area
-    
-    # Try shorter sequences too
-    for r in range(1, 3):
-        for perm in itertools.permutations(funcs, r):
-            for edge_order in [(False, True), (True, False)]:
-                test_pos = copy.deepcopy(initialPositions)
-                
-                for outerEdge in edge_order:
-                    for f in perm:
-                        test_pos = f(test_pos, descendants, ancestors, outerEdge)
-                        test_pos = compactTwigsLeaves(ancestors, descendants, test_pos, spacing)
-                
-                test_area = getHArea(test_pos, descendants)
-                
-                if test_area["edge"] < best_area["edge"]:
-                    best_pos = copy.deepcopy(test_pos)
-                    best_area = test_area
-    
-    # Try original approach too
-    curr_pos = copy.deepcopy(initialPositions)
-    compaction = funcs[:]
-    while True:
-        oldPos = normalize_positions(curr_pos)
-        compaction = compaction[::-1]
-        for outerEdge in [True, False]:
-            for f in compaction:
-                curr_pos = f(curr_pos, descendants, ancestors, outerEdge)
-                curr_pos = compactTwigsLeaves(ancestors, descendants, curr_pos, spacing)
-        if (
-            getHArea(oldPos, descendants)["edge"]
-            <= getHArea(curr_pos, descendants)["edge"]
-        ):
-            curr_pos = copy.deepcopy(oldPos)
+    # Main compaction loop
+    positions = normalize_positions(initialPositions)
+    max_iterations = 50  # Prevent infinite loops
+    i = 0
+
+    while i < max_iterations:
+        prev_positions = normalize_positions(positions)
+
+        moved = False
+
+        # Process nodes in order (leaves first, then nodes with increasing number of ancestors)
+        for node in ordered_nodes:
+            if node not in descendants:
+                # This is a leaf node (has no descendants) - nothing to move towards
+                # These are the bottom-most individuals in the tree with no children
+                # So we don't move them since they have no descendants to move toward
+                pass
+            else:
+                # Determine visibility graphs for all directions
+                x_bars = getXBars(ancestors, descendants, positions)
+                y_bars = getYBars(ancestors, descendants, positions)
+
+                ltr_visibility = getVisibilityLTR(x_bars, positions)
+                rtl_visibility = getVisibilityRTL(x_bars, positions)
+                ttb_visibility = getVisibilityTTB(y_bars, positions)
+                btt_visibility = getVisibilityBTT(y_bars, positions)
+                # This is a non-leaf node - move towards its descendant with ancestors
+                target = descendants[node]
+                if target in positions:
+                    moved |= moveNodeAndAncestorsTowardsDescendant(
+                        positions,
+                        node,
+                        target,
+                        ancestors,
+                        spacing,
+                        x_bars,
+                        y_bars,
+                        ltr_visibility,
+                        rtl_visibility,
+                        ttb_visibility,
+                        btt_visibility,
+                    )
+
+        # Check if positions changed significantly (convergence)
+        # Stop if no movement happened AND positions didn't change significantly
+        # Also check if there's no improvement in the area
+        current_area = getHArea(positions, descendants)
+        prev_area = getHArea(prev_positions, descendants)
+        positions_changed = current_area["edge"] != prev_area["edge"]
+
+        # Stop if no movement happened AND no improvement in area
+        if not moved and not positions_changed:
             break
-    
-    curr_area = getHArea(curr_pos, descendants)
-    if curr_area["edge"] < best_area["edge"]:
-        best_pos = copy.deepcopy(curr_pos)
-        best_area = curr_area
 
-    print(best_area)
-    drawHTree(best_area, descendants, file, best_pos, size, p)
+        print(i, getHArea(positions, descendants), moved, positions_changed)
+        i += 1
+
+    area = getHArea(positions, descendants)
+    print(area)
+    drawHTree(area, descendants, file, positions, size, p)
+
+
+def orderNodesByAncestors(ancestors, positions):
+    """Order nodes by number of ancestors (upstream nodes), leaves first"""
+
+    countAncestors = lambda node: (
+        len(getAncestorsH(node, ancestors)) if node in ancestors else 0
+    )
+
+    # Sort nodes by number of ancestors (ascending - leaves first)
+    return sorted(positions.keys(), key=countAncestors)
+
+
+def positionsEqual(pos1, pos2):
+    """Check if two position dictionaries are approximately equal"""
+    if set(pos1.keys()) != set(pos2.keys()):
+        return False
+
+    for key in pos1:
+        if (
+            abs(pos1[key][0] - pos2[key][0]) > 0.1
+            or abs(pos1[key][1] - pos2[key][1]) > 0.1
+        ):
+            return False
+    return True
+
+
+def moveNodeTowardsTarget(
+    positions,
+    node,
+    target,
+    spacing,
+    x_bars,
+    y_bars,
+    ltr_visibility,
+    rtl_visibility,
+    ttb_visibility,
+    btt_visibility,
+):
+    """Move a node towards a target (ancestor or descendant) considering visibility constraints"""
+    if node not in positions or target not in positions:
+        return False
+
+    node_x, node_y = positions[node]
+    target_x, target_y = positions[target]
+
+    # Calculate desired movement direction
+    dx = target_x - node_x
+    dy = target_y - node_y
+
+    # Get the bars this node belongs to
+    node_x_bar = None
+    node_y_bar = None
+
+    for x_bar_key, nodes_in_bar in x_bars.items():
+        if node in nodes_in_bar:
+            node_x_bar = x_bar_key
+            break
+
+    for y_bar_key, nodes_in_bar in y_bars.items():
+        if node in nodes_in_bar:
+            node_y_bar = y_bar_key
+            break
+
+    new_x, new_y = node_x, node_y
+    moved = False
+
+    # Determine which direction has greater distance and move in that direction primarily
+    if (
+        abs(dx) >= abs(dy) and abs(dx) > 0.1
+    ):  # Horizontal movement is larger or only movement
+        # Calculate how far we can move horizontally based on visibility
+        max_horizontal_move = min(abs(dx), spacing)  # Allow full spacing movement
+
+        if node_x_bar:
+            # Check LTR visibility
+            if node_x_bar in ltr_visibility:
+                visible_bar = ltr_visibility[node_x_bar]
+                if visible_bar in x_bars:
+                    visible_x = visible_bar[0]
+                    if dx > 0:  # Want to move right
+                        max_horizontal_move = min(
+                            max_horizontal_move, max(0, visible_x - node_x - spacing)
+                        )
+                    else:  # Want to move left
+                        max_horizontal_move = min(
+                            max_horizontal_move, max(0, node_x - visible_x - spacing)
+                        )
+
+            # Check RTL visibility
+            if node_x_bar in rtl_visibility:
+                visible_bar = rtl_visibility[node_x_bar]
+                if visible_bar in x_bars:
+                    visible_x = visible_bar[0]
+                    if dx > 0:  # Want to move right
+                        max_horizontal_move = min(
+                            max_horizontal_move, max(0, visible_x - node_x - spacing)
+                        )
+                    else:  # Want to move left
+                        max_horizontal_move = min(
+                            max_horizontal_move, max(0, node_x - visible_x - spacing)
+                        )
+
+        # Apply horizontal movement if possible
+        if max_horizontal_move > 0:
+            move_amount = min(abs(dx), max_horizontal_move)
+            if dx > 0:  # Move right
+                new_x = node_x + move_amount
+            else:  # Move left
+                new_x = node_x - move_amount
+
+            if abs(new_x - node_x) > 0.1:  # Only move if there's a significant change
+                moved = True
+    elif abs(dy) > 0.1:  # Vertical movement is larger
+        # Calculate how far we can move vertically based on visibility
+        max_vertical_move = min(abs(dy), spacing)  # Allow full spacing movement
+
+        if node_y_bar:
+            # Check TTB visibility
+            if node_y_bar in ttb_visibility:
+                visible_bar = ttb_visibility[node_y_bar]
+                if visible_bar in y_bars:
+                    visible_y = visible_bar[0]
+                    if dy > 0:  # Want to move down
+                        max_vertical_move = min(
+                            max_vertical_move, max(0, visible_y - node_y - spacing)
+                        )
+                    else:  # Want to move up
+                        max_vertical_move = min(
+                            max_vertical_move, max(0, node_y - visible_y - spacing)
+                        )
+
+            # Check BTT visibility
+            if node_y_bar in btt_visibility:
+                visible_bar = btt_visibility[node_y_bar]
+                if visible_bar in y_bars:
+                    visible_y = visible_bar[0]
+                    if dy > 0:  # Want to move down
+                        max_vertical_move = min(
+                            max_vertical_move, max(0, visible_y - node_y - spacing)
+                        )
+                    else:  # Want to move up
+                        max_vertical_move = min(
+                            max_vertical_move, max(0, node_y - visible_y - spacing)
+                        )
+
+        # Apply vertical movement if possible
+        if max_vertical_move > 0:
+            move_amount = min(abs(dy), max_vertical_move)
+            if dy > 0:  # Move down
+                new_y = node_y + move_amount
+            else:  # Move up
+                new_y = node_y - move_amount
+
+            if abs(new_y - node_y) > 0.1:  # Only move if there's a significant change
+                moved = True
+
+    # Actually update the position if movement occurred
+    if moved:
+        positions[node] = (new_x, new_y)
+
+    return moved
+
+
+def getAncestorsH(node, ancestors):
+    """Recursively get all ancestors of a node"""
+    all_ancestors = set()
+    nodes_to_check = list(ancestors.get(node, set()))
+
+    while nodes_to_check:
+        current = nodes_to_check.pop()
+        if current not in all_ancestors:
+            all_ancestors.add(current)
+            # Add the ancestors of this node to the list to check
+            nodes_to_check.extend(ancestors.get(current, set()))
+
+    return all_ancestors
+
+
+def moveNodeAndAncestorsTowardsDescendant(
+    positions,
+    node,
+    target,
+    ancestors,
+    spacing,
+    x_bars,
+    y_bars,
+    ltr_visibility,
+    rtl_visibility,
+    ttb_visibility,
+    btt_visibility,
+):
+    """Move a node and its ancestors toward the target by calculating distance from all ancestors"""
+    if node not in positions or target not in positions:
+        return False
+
+    node_x, node_y = positions[node]
+    target_x, target_y = positions[target]
+
+    # Calculate desired movement direction
+    dx = target_x - node_x
+    dy = target_y - node_y
+
+    # Determine primary direction based on greater displacement
+    is_horizontal_primary = abs(dx) >= abs(dy)
+
+    # Get all nodes in the ancestral block (node and ALL its ancestors recursively)
+    all_ancestors_recursive = getAncestorsH(node, ancestors)
+    all_nodes_to_check = {node}
+    all_nodes_to_check.update(all_ancestors_recursive)
+
+    # Calculate distance based on the primary direction
+    if is_horizontal_primary:
+        distance_to_move = abs(dx)
+        direction_multiplier = (
+            1 if dx > 0 else -1
+        )  # Positive for right, negative for left
+    else:
+        distance_to_move = abs(dy)
+        direction_multiplier = 1 if dy > 0 else -1  # Positive for down, negative for up
+
+    # Apply movement based on primary direction
+    if is_horizontal_primary and abs(dx) > 0.1:
+        # Calculate how far we can move horizontally based on visibility
+        max_horizontal_move = distance_to_move  # Use the actual distance to target
+
+        # Check visibility constraints for all nodes (node and its ancestors)
+        for check_node in all_nodes_to_check:
+            if check_node in positions:
+                # Get the bar this specific node belongs to
+                check_node_x_bar = None
+                for x_bar_key, nodes_in_bar in x_bars.items():
+                    if check_node in nodes_in_bar:
+                        check_node_x_bar = x_bar_key
+                        break
+
+                if check_node_x_bar:
+                    # Only check visibility in the direction of movement
+                    if (
+                        dx > 0 and check_node_x_bar in ltr_visibility
+                    ):  # Moving right, check LTR visibility
+                        visible_bar = ltr_visibility[check_node_x_bar]
+                        if visible_bar in x_bars:
+                            visible_x = visible_bar[0]
+                            # Only update max_horizontal_move if moving in the right direction
+                            max_horizontal_move = min(
+                                max_horizontal_move,
+                                max(
+                                    0,
+                                    visible_x - positions[check_node][0] - spacing,
+                                ),
+                            )
+                            print(
+                                f"{check_node} {positions[check_node][0]} -> {visible_x} ({max_horizontal_move})"
+                            )
+                    elif (
+                        dx < 0 and check_node_x_bar in rtl_visibility
+                    ):  # Moving left, check RTL visibility
+                        visible_bar = rtl_visibility[check_node_x_bar]
+                        if visible_bar in x_bars:
+                            visible_x = visible_bar[0]
+                            # Only update max_horizontal_move if moving in the left direction
+                            max_horizontal_move = min(
+                                max_horizontal_move,
+                                max(
+                                    0,
+                                    positions[check_node][0] - visible_x - spacing,
+                                ),
+                            )
+                            print(
+                                f"{check_node} {positions[check_node][0]} <- {visible_x} ({max_horizontal_move})"
+                            )
+
+        # Apply horizontal movement if possible
+        if max_horizontal_move > 0:
+            move_amount = max_horizontal_move * direction_multiplier
+            new_x = node_x + move_amount
+
+            if abs(new_x - node_x) > 0.1:  # Only move if there's a significant change
+                positions[node] = (new_x, node_y)
+                print(f"{node} ({len(all_ancestors_recursive)}) -> {target}")
+                # Move all ancestors in the same direction
+                for ancestor in all_ancestors_recursive:
+                    if ancestor in positions:
+                        ax, ay = positions[ancestor]
+                        positions[ancestor] = (ax + move_amount, ay)
+                return True
+
+    elif not is_horizontal_primary and abs(dy) > 0.1:
+        # Calculate how far we can move vertically based on visibility
+        max_vertical_move = distance_to_move  # Use the actual distance to target
+
+        # Check visibility constraints for all nodes (node and its ancestors)
+        for check_node in all_nodes_to_check:
+            if check_node in positions:
+                # Get the bar this specific node belongs to
+                check_node_y_bar = None
+                for y_bar_key, nodes_in_bar in y_bars.items():
+                    if check_node in nodes_in_bar:
+                        check_node_y_bar = y_bar_key
+                        break
+
+                if check_node_y_bar:
+                    # Check TTB visibility
+                    if dy > 0 and check_node_y_bar in ttb_visibility:
+                        visible_bar = ttb_visibility[check_node_y_bar]
+                        if visible_bar in y_bars:
+                            visible_y = visible_bar[0]
+                            max_vertical_move = min(
+                                max_vertical_move,
+                                max(
+                                    0,
+                                    visible_y - positions[check_node][1] - spacing,
+                                ),
+                            )
+
+                    # Check BTT visibility
+                    if dy < 0 and check_node_y_bar in btt_visibility:
+                        visible_bar = btt_visibility[check_node_y_bar]
+                        if visible_bar in y_bars:
+                            visible_y = visible_bar[0]
+                            max_vertical_move = min(
+                                max_vertical_move,
+                                max(
+                                    0,
+                                    positions[check_node][1] - visible_y - spacing,
+                                ),
+                            )
+
+        # Apply vertical movement if possible
+        if max_vertical_move > 0:
+            move_amount = max_vertical_move * direction_multiplier
+            new_y = node_y + move_amount
+
+            if abs(new_y - node_y) > 0.1:  # Only move if there's a significant change
+                positions[node] = (node_x, new_y)
+                print(f"{node} ({len(all_ancestors_recursive)}) -> {target}")
+                # Move all ancestors in the same direction
+                for ancestor in all_ancestors_recursive:
+                    if ancestor in positions:
+                        ax, ay = positions[ancestor]
+                        positions[ancestor] = (ax, ay + move_amount)
+                return True
+
+    return False
 
 
 def compactTwigsLeaves(ancestors, descendants, initialPositions, spacing):
