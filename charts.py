@@ -322,7 +322,7 @@ def attempt_space_filling_move(
 
 
 def generateHTree(file: str, p: str, size: int = 90):
-    N = len(generations) // 2
+    N = len(generations) // 2 + 1
     spacing: int = size + int(size / 6)
 
     ancestors, descendants, initialPositions = getInitialPositionsH(size, N, p)
@@ -577,8 +577,8 @@ def moveNodeAndAncestorsTowardsDescendant(
     isHorizPrimary = abs(dx) >= abs(dy)
 
     ancestralBlock = getAncestorsH(node, ancestors)
-    if len(ancestralBlock) > 3:
-        return False  # Don't move if there are too many ancestors to check
+    # if len(ancestralBlock) > 10:
+    #     return False  # Don't move if there are too many ancestors to check
     allNodesToCheck = {node}
     allNodesToCheck.update(ancestralBlock)
 
@@ -924,10 +924,10 @@ def getInitialPositionsH(s, N, p0) -> Tuple[Dict, Dict, Dict]:
     return ancestors, descendants, initialPositions
 
 
-def positionH(d, N, s=90 + 15) -> Tuple[int, int]:
+def positionH(d: list[str], N: int, s=90 + 15) -> Tuple[int, int]:
     x, y = 0, 0
     if len(d) == 1:
-        return x, y
+        return int(x), int(y)
     for i, j in enumerate(d[::-1][1:]):
         if not (i + 1) % 2:
             y += (
@@ -941,7 +941,7 @@ def positionH(d, N, s=90 + 15) -> Tuple[int, int]:
                 * s
                 * 2 ** (N - (people[j].generation or 0) // 2 - 1)
             )
-    return x, y
+    return int(x), int(y)
 
 
 def getHArea(initialPositions: Dict, descendants: Dict) -> Dict[str, int]:
