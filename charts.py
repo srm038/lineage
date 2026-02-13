@@ -332,7 +332,7 @@ def generateHTree(file: str, p: str, size: int = 90):
     ordered_nodes = orderNodesByAncestors(ancestors, initialPositions)
 
     positions = normalize_positions(initialPositions)
-    max_iterations = 1
+    max_iterations = 5
     i = 0
 
     while i < max_iterations:
@@ -602,6 +602,8 @@ def moveNodeAndAncestorsTowardsDescendant(
         {p: v for p, v in positions.items() if p not in allNodesToCheck},
     )
 
+    # Track the maximum units we can move
+    maxPossibleUnits = 0
     units = 0
     distance = lambda units: units * spacing
     while distance(units) < maxDistance:
@@ -622,23 +624,27 @@ def moveNodeAndAncestorsTowardsDescendant(
         for n in allNodesToCheck:
             if isHorizPrimary:
                 for bar in barsX:
-                    if proposedPositions[n][0] == bar[0][0] and proposedPositions[n][
-                        1
-                    ] in range(bar[0][1], bar[1][1] + 1):
+                    if proposedPositions[n][0] == bar[0][0] and int(
+                        proposedPositions[n][1]
+                    ) in range(int(bar[0][1]), int(bar[1][1]) + 1):
                         hasCollisionAtPosition = True
                         break
             else:
                 for bar in barsY:
-                    if proposedPositions[n][1] == bar[0][1] and proposedPositions[n][
-                        0
-                    ] in range(bar[0][0], bar[1][0] + 1):
+                    if proposedPositions[n][1] == bar[0][1] and int(
+                        proposedPositions[n][0]
+                    ) in range(int(bar[0][0]), int(bar[1][0]) + 1):
                         hasCollisionAtPosition = True
                         break
-        if hasCollisionAtPosition:
-            break
-        for n in allNodesToCheck:
-            positions[n] = proposedPositions[n]
+        if not hasCollisionAtPosition:
+            # No collision detected, this movement is valid
+            maxPossibleUnits = units + 1
+            # Apply the movement to the actual positions
+            for n in allNodesToCheck:
+                positions[n] = proposedPositions[n]
+        # Continue exploring even if there's a collision - don't break
         units += 1
+    units = maxPossibleUnits
     if units > 0:
         print(f"{node} (+{len(ancestralBlock)}) -> ({units}) {target}")
     return units > 0
