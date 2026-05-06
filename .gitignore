@@ -3,3 +3,6 @@
 !**/*.config.json
 !requirements.txt
 !README.md
+!uv.lock
+!.python-version
+!pyproject.toml
