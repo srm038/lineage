@@ -3,12 +3,14 @@ import json
 import os
 from typing import Dict, List, Literal, Set, Union
 import warnings
+from functools import lru_cache
+from collections import deque
 
 import pluscodes
 from requests_cache import Optional
 
 from config import people, generations
-from models import Marriage, Person, Vitals
+from models import Marriage, Marriages, Person, Vitals
 
 
 def isDateFull(d: Union[str, int]) -> bool:
@@ -17,8 +19,7 @@ def isDateFull(d: Union[str, int]) -> bool:
     :param d: the date to check
     :return: True if the date is full, False otherwise
     """
-    d = str(d)
-    d = d.split(" ")
+    d = str(d).split(" ")
     return len(d) == 3
 
 
@@ -28,7 +29,7 @@ def loadRawData(familyName: str) -> Dict:
     :param familyName: the name of the JSON file
     :return: the raw data
     """
-    with open(rf"{os.getcwd()}\data\{familyName}.tree.json", "r") as f:
+    with open(rf"{os.getcwd()}/data/{familyName}.tree.json", "r") as f:
         rawData = json.load(f)
     if not runLinter(rawData):
         raise KeyError
@@ -47,6 +48,9 @@ def importFamily(familyName: str, p0: str):
     # initial setup
     for p in rawData:
         people[p["id"]] = Person(**{k: v for k, v in p.items()})
+    for p in list(people):
+        mar = getattr(people[p], "marriage", {}) or {}
+        people[p].marriage = Marriages({s: Marriage(**m) for s, m in mar.items()})
     # process children
     for p in list(people):
         for s in people[p].getFecundSpouses():
@@ -78,7 +82,7 @@ def importFamily(familyName: str, p0: str):
                 people[p].marriage.pop(s)
                 people[p].spouse.add(newId)
                 people[p].spouse.remove(s)
-                people[newId].marriage = {p: people[p].marriage[newId]}
+                people[newId].marriage = Marriages({p: people[p].marriage[newId]})
                 people[newId].spouse |= set([p])
                 people[newId].child |= {
                     c
@@ -95,6 +99,11 @@ def importFamily(familyName: str, p0: str):
                 people[s].child |= {
                     c for c in people[p].child if c in people[s].marriage[p].children
                 }
+    # Clear ancestor cache (used by inFullTree/getAncestors) because `people` mutated
+    try:
+        getAncestors.cache_clear()
+    except Exception:
+        pass
     updateGenerationGroups(p0)
 
 
@@ -183,14 +192,38 @@ def updateGenerationGroups(p0):
 
 
 def setGenerations(p0):
-    for p in filter(lambda p: inFullTree(p, p0), people):
-        people[p].generation = max(len(d) - 1 for d in descent(p, p0))
+    # Reset generations
+    for p in people:
+        people[p].generation = None
+
+    if p0 not in people:
+        warnings.warn(f"root {p0} not found; skipping generation assignment", Warning)
+        return
+
+    # BFS up the parent links from p0 to assign generation (distance) to each ancestor.
+    q = deque()
+    people[p0].generation = 0
+    q.append(p0)
+
+    while q:
+        cur = q.popleft()
+        cur_gen = people[cur].generation or 0
+        for parent in (people[cur].father, people[cur].mother):
+            if parent and parent in people:
+                parent_gen = cur_gen + 1
+                if (
+                    people[parent].generation is None
+                    or parent_gen > people[parent].generation
+                ):
+                    people[parent].generation = parent_gen
+                    q.append(parent)
 
 
 def isInGeneration(g: int, p: str) -> bool:
     return people[p].generation == g
 
 
+@lru_cache(maxsize=None)
 def getAncestors(p):
     ancestors = {p}
     i = 0
@@ -319,7 +352,7 @@ def generationCount(children=False):
 def getApproxVitals(root):
     currentYear: int = datetime.datetime.now().year
     current: Set[str] = {root}
-    done: Dict[str, Dict[str, int]] = dict()
+    done: Dict[str, Dict[str, int | None]] = dict()
     while current:
         for p in list(current):
             b = people[p].birth.getYear()
@@ -327,9 +360,9 @@ def getApproxVitals(root):
             y = 0
             done.update({p: {"b": b, "d": d, "y": y}})
             if people[p].father in people:
-                current.add(people[p].father)
-            if people[p].mother in people:
-                current.add(people[p].mother)
+                current.add(people[p].father or "")
+            if people[p].mother and people[p].mother in people:
+                current.add(people[p].mother or "")
             current.discard(p)
 
     unknownb: Set[str] = set()
@@ -338,7 +371,7 @@ def getApproxVitals(root):
         if not people[p].death.getYear():
             if (
                 people[p].birth.getYear()
-                and currentYear - people[p].birth.getYear() < 100
+                and currentYear - (people[p].birth.getYear() or currentYear) < 100
             ):
                 done[p]["d"] = currentYear
                 continue
@@ -350,16 +383,16 @@ def getApproxVitals(root):
     return done, unknownb, unknownd
 
 
-def getChildBirthYears(done: dict, p: str) -> int:
+def getChildBirthYears(done: dict, p: str) -> int | None:
     allChildren = getAllChildren(p)
-    childBirthYears: int = list(
+    childBirthYears: int | None = list(
         filter(None, [getApproxBirth(done, c) for c in allChildren])
     ) or [None]
     return childBirthYears
 
 
-def getMarriageDates(p: str) -> List[int | None]:
-    marriageDates: List[int | None] = []
+def getMarriageDates(p: str):
+    marriageDates = []
     if people[p].gender == "M":
         spouses = people[p].spouse
         marriageDates = [people[p].marriage[s].getYear() for s in spouses]
@@ -370,13 +403,13 @@ def getMarriageDates(p: str) -> List[int | None]:
             else people[p].spouse
         )
         marriageDates = [people[p].marriage[spouse].getYear()]
-    marriageDates: Optional[int] = max(
+    marriageDates = max(
         list(filter(lambda x: x != 0, filter(None, marriageDates))) or [None]
     )
     return marriageDates
 
 
-def getApproxDeath(done: dict, p: str) -> int:
+def getApproxDeath(done: dict, p: str) -> int | None:
     if getattr(getattr(people[p], "death", Vitals), "date", False):
         return people[p].death.getYear()
     lastChildBirth = max(getChildBirthYears(done, p))
@@ -384,7 +417,7 @@ def getApproxDeath(done: dict, p: str) -> int:
     return max(list(filter(None, [lastChildBirth, marriageDates])) or [None])
 
 
-def getApproxBirth(done: dict, p: str) -> int:
+def getApproxBirth(done: dict, p: str) -> int | None:
     if getattr(getattr(people[p], "birth", Vitals), "date", False):
         return people[p].birth.getYear()
 
@@ -569,10 +602,8 @@ def getCoordinates(link):
 def printGraves():
     for p in people:
         if "plusCode" in people[p].get("buried", {}):
-            print(
-                f'{getFullName(people[p])},"{getCoordinates(
-                    people[p]["buried"]["plusCode"])}"'
-            )
+            print(f'{getFullName(people[p])},"{getCoordinates(
+                    people[p]["buried"]["plusCode"])}"')
 
 
 def begats(p: str, p0: str) -> str | list[str]:
@@ -608,7 +639,7 @@ def getFullName(person: Person) -> str:
     return name
 
 
-def joinName(*name: iter) -> str:
+def joinName(*name) -> str:
     joinedName = " ".join(filter(None, name))
     return joinedName
 

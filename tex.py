@@ -27,7 +27,6 @@ def getLineage(p: str, parent: Literal["father", "mother"]) -> str:
     if parent not in ["father", "mother"]:
         raise KeyError(f"{parent} is not a proper parent")
     p1 = getParent(p, parent)
-    p2 = getParent(p, {"father": "mother"}.get(parent, "father"))
     if not p1 or p1 not in people:
         return ""
     parentLine = getLineage(p1, parent)
@@ -179,9 +178,9 @@ def getParentDetails(person: Person, s: str) -> str:
 
 
 def generateSpouse(person: Person, p0: str):
-    spouse: list = person.spouse
+    spouse = person.spouse
     if type(spouse) == str:
-        spouse: list = [spouse]
+        spouse = [spouse]
     spouseDetail = []
     sortedSpouses = sorted(
         filter(lambda s: s != "", spouse),
@@ -299,9 +298,7 @@ def getAccolades(person: Person) -> str:
             accolades.append(a)
     if blazon := getattr(person, "blazon", set()):
         for b in blazon:
-            accolades.append(
-                rf"includegraphics[height=\fontcharht\font`l]{{data/arms/{b}}}"
-            )
+            accolades.append(rf"includegraphics[height=\fontcharht\font`l]{{{b}}}")
     return r"\,".join(rf"\{a}" for a in accolades)
 
 
@@ -372,7 +369,7 @@ def getAncestorTag(person: Person) -> str:
 
 def generateTex(familyName: str, p0: str):
     importFamily(familyName, p0)
-    with open(rf"{os.getcwd()}\tex\{familyName}_generated.tex", "w") as f:
+    with open(rf"{os.getcwd()}/tex/{familyName}_generated.tex", "w") as f:
         writeTitle(f, familyName)
         writeGenerations(f, p0)
     print(f"{len(set.union(*generations))} total ancestors")

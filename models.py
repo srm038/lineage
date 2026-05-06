@@ -78,6 +78,17 @@ class Marriage:
         return int(self.date.split(" ")[-1])
 
 
+class Marriages(Dict[Optional[str], Marriage]):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __getitem__(self, key):
+        # Return a safe Marriage() when key missing to avoid KeyErrors in callers
+        if key in self:
+            return super().__getitem__(key)
+        return Marriage()
+
+
 class Buried:
     def __init__(
         self, date: str = "", place: str = "", cemetery: str = "", plusCode: str = ""
@@ -101,15 +112,15 @@ class Person:
         gender: Literal["M", "F", "m", "f"],
         birth: Optional[Vitals] = None,
         death: Optional[Vitals] = None,
-        marriage: Dict[str, Marriage] = {},
-        child: Set[str] = set(),
-        spouse: Set[str] = set(),
+        marriage: Optional[Marriages] = None,
+        child: Optional[Set[str]] = None,
+        spouse: Optional[Set[str]] = None,
         father: Optional[str] = None,
         mother: Optional[str] = None,
         generation: None | int = None,
         note: str = "",
         history: str = "",
-        sources: Dict[str, str] = {},
+        sources: Optional[Dict[str, str]] = None,
         tree: Optional[bool] = None,
         army: Optional[bool] = None,
         kia: Optional[bool] = None,
@@ -118,23 +129,27 @@ class Person:
         crusade: Optional[bool] = None,
         templar: Optional[bool] = None,
         lost: Optional[bool] = None,
-        buried: Optional[Buried] = None,
-        blazon: None | Set[str] = None,
+        buried: Optional[dict] = None,
+        blazon: None | Set[str] | list | str = None,
     ):
         self.id = id
-        self.name = Name(**name)
+        self.name = name if isinstance(name, Name) else Name(**name)
         self.gender = gender.upper()
         self.birth = Vitals(**birth) if birth else Vitals()
         self.death = Vitals(**death) if death else Vitals()
-        self.marriage = {k: Marriage(**v) for k, v in marriage.items()}
-        self.child = set(child)
-        self.spouse = spouse if spouse else {k for k in marriage.keys() if k}
+        self.marriage = marriage or Marriages()
+        self.child = set(child) if child is not None else set()
+        self.spouse = (
+            set(spouse)
+            if spouse is not None
+            else {k for k in self.marriage.keys() if k}
+        )
         self.father = father
         self.mother = mother
         self.generation = generation
         self.note = note
         self.history = history
-        self.sources = sources if isinstance(sources, dict) else {s: s for s in sources}
+        self.sources = sources if isinstance(sources, dict) else (sources or {})
         self.tree = tree
         self.army = army
         self.kia = kia
@@ -144,11 +159,12 @@ class Person:
         self.templar = templar
         self.lost = lost
         self.buried = Buried(**buried) if buried else Buried()
-        self.blazon = (
-            set(blazon)
-            if type(blazon) == list
-            else (set([blazon]) if blazon else set())
-        )
+        if isinstance(blazon, list):
+            self.blazon = set(blazon)
+        elif blazon:
+            self.blazon = set([blazon])
+        else:
+            self.blazon = set()
 
     def set(self, **kwargs):
         for key, value in kwargs.items():
@@ -156,7 +172,24 @@ class Person:
                 setattr(self, key, value)
 
     def getFecundSpouses(self) -> List[str]:
-        return [s for s in self.marriage.keys() if self.marriage[s].children]
+        return [
+            s
+            for s in self.marriage.keys()
+            if s is not None and self.marriage[s].children
+        ]
 
     def getPronoun(self) -> str:
         return {"M": "He"}.get(self.gender, "She")
+
+
+class People(Dict[Optional[str], Person]):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def __getitem__(self, key):
+        # For missing or None keys return a safe stub Person instead of raising
+        if key is None:
+            return Person(id="null", name=Name(first="", last=""), gender="M")
+        if key in self:
+            return super().__getitem__(key)
+        return Person(id="null", name=Name(first="", last=""), gender="M")

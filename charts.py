@@ -36,8 +36,7 @@ def box_dim(N, f=2, W=48, m=1):
 def generate_genealogy_tree(root, main=False):
     tree = {
         root: "parent{g{"
-        + f"{people[root].get('name', {}).get('first')
-             } {people[root].get('name', {}).get('last') or '---'}"
+        + f"{people[root].name.first} {people[root].name.last or '---'}"
         + "}}"
     }
     main_people = set()
@@ -46,8 +45,7 @@ def generate_genealogy_tree(root, main=False):
             tree.update(
                 {
                     p: "parent{g{"
-                    + f"{people[p].get('name', {}).get('first')
-                         } {people[p].get('name', {}).get('last') or '---'}"
+                    + f"{people[p].name.first} {people[p].name.last or '---'}"
                     + "}}"
                 }
             )
@@ -56,8 +54,8 @@ def generate_genealogy_tree(root, main=False):
     collapsed_tree = tree.copy()
     for g in generations:
         for c in sorted(
-            set.union(*[people[p]["child"] for p in g]),
-            key=lambda i: people[i]["gender"],
+            set.union(*[people[p].child for p in g]),
+            key=lambda i: people[i].gender,
             reverse=True,
         ):
             if main and c not in main_people:
@@ -65,22 +63,22 @@ def generate_genealogy_tree(root, main=False):
             if c in done:
                 continue
             father, mother, siblings = "", "", ""
-            if people[c]["father"] in g:
-                if people[c]["father"] in done:
-                    father = tree[people[c]["father"]]
+            if people[c].father in g:
+                if people[c].father in done:
+                    father = tree[people[c].father]
                 else:
-                    father = collapsed_tree[people[c]["father"]]
-                done.add(people[c]["father"])
-            if people[c]["mother"] in g:
-                if people[c]["mother"] in done:
-                    mother = tree[people[c]["mother"]]
+                    father = collapsed_tree[people[c].father]
+                done.add(people[c].father)
+            if people[c].mother in g:
+                if people[c].mother in done:
+                    mother = tree[people[c].mother]
                 else:
-                    mother = collapsed_tree[people[c]["mother"]]
-                done.add(people[c]["mother"])
+                    mother = collapsed_tree[people[c].mother]
+                done.add(people[c].mother)
                 try:
                     for s in sorted(
-                        people[people[c]["father"]]["children"][people[c]["mother"]],
-                        key=lambda p: people[p]["gender"],
+                        people[people[c].father].marriage[people[c].mother].children,
+                        key=lambda p: people[p].gender,
                         reverse=True,
                     ):
                         # for s in sorted(people[people[c]['father']]['children'][people[c]['mother']], key=lambda p: get_birth_year(p), reverse=True):
@@ -88,7 +86,7 @@ def generate_genealogy_tree(root, main=False):
                             continue
                         if main and s not in main_people:
                             continue
-                        siblings += "c{" + people[s]["shortname"] + "}"
+                        siblings += "c{" + people[s].name.shortname + "}"
                         done.add(s)
                 except:
                     pass
@@ -557,14 +555,14 @@ def getAncestorsH(node, ancestors):
 
 
 def moveNodeAndAncestorsTowardsDescendant(
-    positions: Dict[str, Tuple[int, int]],
-    node,
-    target,
-    ancestors,
-    descendants,
-    spacing,
-):
-    """Move a node and its ancestors toward the target by calculating distance from all ancestors"""
+    positions: Dict,
+    node: str,
+    target: str,
+    ancestors: Dict,
+    descendants: Dict,
+    spacing: int,
+) -> bool:
+    """Move a node and its ancestors toward target with direct distance calculation"""
     if node not in positions or target not in positions:
         return False
 
@@ -577,77 +575,105 @@ def moveNodeAndAncestorsTowardsDescendant(
     isHorizPrimary = abs(dx) >= abs(dy)
 
     ancestralBlock = getAncestorsH(node, ancestors)
-    # if len(ancestralBlock) > 10:
-    #     return False  # Don't move if there are too many ancestors to check
-    allNodesToCheck = {node}
-    allNodesToCheck.update(ancestralBlock)
+    nodesToCheck = {node}
+    nodesToCheck.update(ancestralBlock)
 
-    # Determine movement direction
-    if isHorizPrimary:
-        dir = 1 if dx > 0 else -1  # Positive for right, negative for left
-    else:
-        dir = 1 if dy > 0 else -1  # Positive for down, negative for up
-
-    # Calculate total distance to move
+    dir = 1 if (dx if isHorizPrimary else dy) > 0 else -1
     maxDistance = abs(dx if isHorizPrimary else dy)
+    maxUnits = int(maxDistance // spacing)
 
-    barsX = getXBars(
-        ancestors,
-        descendants,
-        {p: v for p, v in positions.items() if p not in allNodesToCheck},
-    )
-    barsY = getYBars(
-        ancestors,
-        descendants,
-        {p: v for p, v in positions.items() if p not in allNodesToCheck},
-    )
+    if maxUnits <= 0:
+        return False
 
-    # Track the maximum units we can move
-    maxPossibleUnits = 0
-    units = 0
-    distance = lambda units: units * spacing
-    while distance(units) < maxDistance:
-        proposedPositions = positions.copy()
-        for n in allNodesToCheck:
+    static = {p: v for p, v in positions.items() if p not in nodesToCheck}
+    barsX = getXBars(ancestors, descendants, static)
+    barsY = getYBars(ancestors, descendants, static)
+
+    px = {n: positions[n][0] for n in nodesToCheck}
+    py = {n: positions[n][1] for n in nodesToCheck}
+
+    minUnits = maxUnits
+
+    if isHorizPrimary:
+        # Moving horizontally - check vertical bars and nodes
+        for bar in barsX.keys():
+            barX = bar[0][0]
+            barY1, barY2 = min(bar[0][1], bar[1][1]), max(bar[0][1], bar[1][1])
+
+            for n in nodesToCheck:
+                nodeX, nodeY = px[n], py[n]
+                if dir > 0 and barX > nodeX:
+                    if barY1 <= nodeY <= barY2:
+                        dist = barX - nodeX
+                        units = int(dist // spacing) - 1
+                        minUnits = min(minUnits, units)
+                elif dir < 0 and barX < nodeX:
+                    if barY1 <= nodeY <= barY2:
+                        dist = nodeX - barX
+                        units = int(dist // spacing) - 1
+                        minUnits = min(minUnits, units)
+
+        for n in nodesToCheck:
+            nodeX, nodeY = px[n], py[n]
+            for ox, oy in static.values():
+                if oy == nodeY:
+                    if dir > 0 and ox > nodeX:
+                        dist = ox - nodeX
+                        units = int(dist // spacing) - 1
+                        minUnits = min(minUnits, units)
+                    elif dir < 0 and ox < nodeX:
+                        dist = nodeX - ox
+                        units = int(dist // spacing) - 1
+                        minUnits = min(minUnits, units)
+    else:
+        # Moving vertically - check horizontal bars and nodes
+        for bar in barsY.keys():
+            barY = bar[0][1]
+            barX1, barX2 = min(bar[0][0], bar[1][0]), max(bar[0][0], bar[1][0])
+
+            for n in nodesToCheck:
+                nodeX, nodeY = px[n], py[n]
+                if dir > 0 and barY > nodeY:
+                    if barX1 <= nodeX <= barX2:
+                        dist = barY - nodeY
+                        units = int(dist // spacing) - 1
+                        minUnits = min(minUnits, units)
+                elif dir < 0 and barY < nodeY:
+                    if barX1 <= nodeX <= barX2:
+                        dist = nodeY - barY
+                        units = int(dist // spacing) - 1
+                        minUnits = min(minUnits, units)
+
+        for n in nodesToCheck:
+            nodeX, nodeY = px[n], py[n]
+            for ox, oy in static.values():
+                if ox == nodeX:
+                    if dir > 0 and oy > nodeY:
+                        dist = oy - nodeY
+                        units = int(dist // spacing) - 1
+                        minUnits = min(minUnits, units)
+                    elif dir < 0 and oy < nodeY:
+                        dist = nodeY - oy
+                        units = int(dist // spacing) - 1
+                        minUnits = min(minUnits, units)
+
+    moveUnits = max(0, minUnits)
+
+    if moveUnits > 0:
+        for n in nodesToCheck:
             if isHorizPrimary:
-                proposedPositions[n] = (
-                    proposedPositions[n][0] + dir * distance(1),
-                    proposedPositions[n][1],
+                positions[n] = (
+                    positions[n][0] + dir * moveUnits * spacing,
+                    positions[n][1],
                 )
             else:
-                proposedPositions[n] = (
-                    proposedPositions[n][0],
-                    proposedPositions[n][1] + dir * distance(1),
+                positions[n] = (
+                    positions[n][0],
+                    positions[n][1] + dir * moveUnits * spacing,
                 )
-
-        hasCollisionAtPosition = False
-        for n in allNodesToCheck:
-            if isHorizPrimary:
-                for bar in barsX:
-                    if proposedPositions[n][0] == bar[0][0] and int(
-                        proposedPositions[n][1]
-                    ) in range(int(bar[0][1]), int(bar[1][1]) + 1):
-                        hasCollisionAtPosition = True
-                        break
-            else:
-                for bar in barsY:
-                    if proposedPositions[n][1] == bar[0][1] and int(
-                        proposedPositions[n][0]
-                    ) in range(int(bar[0][0]), int(bar[1][0]) + 1):
-                        hasCollisionAtPosition = True
-                        break
-        if not hasCollisionAtPosition:
-            # No collision detected, this movement is valid
-            maxPossibleUnits = units + 1
-            # Apply the movement to the actual positions
-            for n in allNodesToCheck:
-                positions[n] = proposedPositions[n]
-        # Continue exploring even if there's a collision - don't break
-        units += 1
-    units = maxPossibleUnits
-    if units > 0:
-        print(f"{node} (+{len(ancestralBlock)}) -> ({units}) {target}")
-    return units > 0
+        print(f"{node} (+{len(ancestralBlock)}) -> ({moveUnits}) {target}")
+        return True
+    return False
 
 
 def checkLineIntersection(p1, p2, p3, p4):
@@ -794,7 +820,7 @@ def horizontalCompactionTwig(
 
 
 def drawHTree(area, descendants, file, initialPositions, size, p0):
-    with open(rf"{os.getcwd()}\out\{file}-H.svg", "r") as f:
+    with open(rf"{os.getcwd()}/out/{file}-H.svg", "r") as f:
         svg = bs4.BeautifulSoup(f, "xml")
     treeStyle = f"fill:burlywood;"
     pStyle = f"stroke:black;stroke-width:2px;"
@@ -824,31 +850,44 @@ def drawHTree(area, descendants, file, initialPositions, size, p0):
     maxy = area["maxy"]
     for p in initialPositions:
         x, y = initialPositions[p]
+        # split node key into base id and numeric suffix (handles multi-digit suffixes)
+        if "-" in p:
+            key = p.rsplit("-", 1)[0]
+            suffix = p.rsplit("-", 1)[1]
+        else:
+            key = p
+            suffix = "0"
         # Only draw connection lines if the node has descendants
         if p in descendants:
             xc, yc = initialPositions[descendants[p]]
-            key = p[:-2]
             rx = {"M": int(size / 6), "F": int(size / 2)}[people[key].gender]
             tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' rx='{rx}' width='{
-                size}' height='{size}' class='tree{' primary' if p0 == p[:-2] else ''}' id='{p}' />"
+                size}' height='{size}' class='tree{' primary' if p0 == key else ''}' id='{p}' />"
             tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' width='{
                 size}' height='{size}' style='{gen(people[key].generation)}'/>"
             if people[key].name.last:
-                names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key].name.first or ''}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].name.last or ''}</tspan></text>"
+                try:
+                    is_dup = int(suffix) != 0
+                except Exception:
+                    is_dup = False
+                names += f"<text class='name{' duplicate' if is_dup else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key].name.first or ''}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].name.last or ''}</tspan></text>"
             else:
                 names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{
                     x}' y='{y}'>{people[key].name.first}</tspan></text>"
             lines += f"<path d='M {x},{y} L {xc},{yc}' class='line'/>"
         else:
             # Draw just the node without connections for leaf nodes
-            key = p[:-2]
             rx = {"M": int(size / 6), "F": int(size / 2)}[people[key].gender]
             tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' rx='{rx}' width='{
-                size}' height='{size}' class='tree{' primary' if p0 == p[:-2] else ''}' id='{p}' />"
+                size}' height='{size}' class='tree{' primary' if p0 == key else ''}' id='{p}' />"
             tree += f"<rect x='{x - size / 2}' y='{y - size / 2}' width='{
                 size}' height='{size}' style='{gen(people[key].generation)}'/>"
             if people[key].name.last:
-                names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key].name.first or ''}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].name.last or ''}</tspan></text>"
+                try:
+                    is_dup = int(suffix) != 0
+                except Exception:
+                    is_dup = False
+                names += f"<text class='name{' duplicate' if is_dup else ''}'><tspan x='{x}' y='{y}' dy='-2.5pt'>{people[key].name.first or ''}</tspan><tspan x='{x}' y='{y}' dy='7.5pt'>{people[key].name.last or ''}</tspan></text>"
             else:
                 names += f"<text class='name{' duplicate' if int(p[-1]) != 0 else ''}'><tspan x='{
                     x}' y='{y}'>{people[key].name.first}</tspan></text>"
@@ -864,7 +903,7 @@ def drawHTree(area, descendants, file, initialPositions, size, p0):
             "viewBox": f"{minx - size / 2} {miny - size / 2} {maxx - minx + size} {maxy - miny + size}"
         }
     )
-    with open(rf"{os.getcwd()}\out\{file}-H.svg", "w") as f:
+    with open(rf"{os.getcwd()}/out/{file}-H.svg", "w") as f:
         f.write(svg.prettify())
 
 
@@ -1152,30 +1191,35 @@ def getXBars(
 ) -> Dict[Tuple[Tuple[int, int], Tuple[int, int]], List[str]]:
     """
     Create bars representing nodes that share the same x-coordinate and cannot be crossed by horizontal movement
+    O(n log n) version - group by coordinate in single pass
     """
-    posX: Set[int] = {pos[i][0] for i in pos}
+    # Group nodes by x coordinate in a single pass - O(n)
     axis: Dict = {}
-    for x in sorted(posX):
-        nodes: Iterable = sorted(
-            {i for i in pos if pos[i][0] == x},
-            key=lambda n: pos[n][1],
-        )
-        axis.update({x: list(nodes)})
+    for node, (x, y) in pos.items():
+        if x not in axis:
+            axis[x] = []
+        axis[x].append((node, y))
+
+    # Sort each group by y coordinate - O(n log n) total
+    for x in axis:
+        axis[x].sort(key=lambda item: item[1])
+
     bars: Dict[Tuple[Tuple[int, int], Tuple[int, int]], List[str]] = {}
     for x in axis:
         done = set()
         y1, y2, k = None, None, []
-        for i, u in enumerate(axis[x]):
+        nodes_at_x = axis[x]
+        for i, (u, y) in enumerate(nodes_at_x):
             if u in done:
                 continue
             k.append(u)
-            y1 = pos[u][1] if y1 is None else min(y1, pos[u][1])
-            y2 = pos[u][1] if y2 is None else max(y2, pos[u][1])
-            if i + 1 == len(axis[x]):
+            y1 = y if y1 is None else min(y1, y)
+            y2 = y if y2 is None else max(y2, y)
+            if i + 1 == len(nodes_at_x):
                 bars.update({((x, y1), (x, y2)): k})
                 y1, y2, k = None, None, []
                 break
-            v = axis[x][i + 1]
+            v = nodes_at_x[i + 1][0]
             if not v == des.get(u) and v not in anc.get(u, set()):
                 bars.update({((x, y1), (x, y2)): k})
                 y1, y2, k = None, None, []
@@ -1188,30 +1232,35 @@ def getYBars(
 ) -> Dict[Tuple[Tuple[int, int], Tuple[int, int]], List[str]]:
     """
     Create bars representing nodes that share the same y-coordinate and cannot be crossed by vertical movement
+    O(n log n) version - group by coordinate in single pass
     """
-    posY: Set[int] = {pos[i][1] for i in pos}
+    # Group nodes by y coordinate in a single pass - O(n)
     axis: Dict = {}
-    for y in sorted(posY):
-        nodes: Iterable = sorted(
-            {i for i in pos if pos[i][1] == y},
-            key=lambda n: pos[n][0],
-        )
-        axis.update({y: list(nodes)})
+    for node, (x, y) in pos.items():
+        if y not in axis:
+            axis[y] = []
+        axis[y].append((node, x))
+
+    # Sort each group by x coordinate - O(n log n) total
+    for y in axis:
+        axis[y].sort(key=lambda item: item[1])
+
     bars: Dict[Tuple[Tuple[int, int], Tuple[int, int]], List[str]] = {}
     for y in axis:
         done = set()
         x1, x2, k = None, None, []
-        for i, u in enumerate(axis[y]):
+        nodes_at_y = axis[y]
+        for i, (u, x) in enumerate(nodes_at_y):
             if u in done:
                 continue
             k.append(u)
-            x1 = pos[u][0] if x1 is None else min(x1, pos[u][0])
-            x2 = pos[u][0] if x2 is None else max(x2, pos[u][0])
-            if i + 1 == len(axis[y]):
+            x1 = x if x1 is None else min(x1, x)
+            x2 = x if x2 is None else max(x2, x)
+            if i + 1 == len(nodes_at_y):
                 bars.update({((x1, y), (x2, y)): k})
                 x1, x2, k = None, None, []
                 break
-            v = axis[y][i + 1]
+            v = nodes_at_y[i + 1][0]
             if not v == des.get(u) and v not in anc.get(u, set()):
                 bars.update({((x1, y), (x2, y)): k})
                 x1, x2, k = None, None, []
@@ -1252,15 +1301,20 @@ def generateLineTree(file, root):
     ancestors, descendants, initialPositions = getInitialPositionsLine(
         pt2px(10), numGenerations, root
     )
-    positions = verticalCompactionLineTTB(
-        done, initialPositions, descendants, ancestors
-    )
-    positions = verticalCompactionLineBTT(
-        done, initialPositions, descendants, ancestors
-    )
-    positions = verticalCompactionLineTTB(
-        done, initialPositions, descendants, ancestors
-    )
+
+    # Use unit-based movement with collision checking instead of visibility-based compaction
+    positions = initialPositions.copy()
+    spacing = pt2px(15)  # Use appropriate spacing
+
+    # Continue moving ancestors toward children until no more movements possible
+    moved = True
+    max_iterations = 100  # Prevent infinite loops
+    iterations = 0
+
+    while moved and iterations < max_iterations:
+        moved = moveAncestorsTowardsChildren(positions, ancestors, descendants, spacing)
+        iterations += 1
+
     for p in done:
         done[p]["y"] = positions[p]
     minY = min(done[p]["y"] for p in done)
@@ -1268,6 +1322,7 @@ def generateLineTree(file, root):
         done[p]["y"] = done[p]["y"] - minY
 
     drawLineChart(currentYear, done, file, unknownb, unknownd)
+    return positions
 
 
 def drawLineChart(
@@ -1292,24 +1347,16 @@ def drawLineChart(
     for p in done:
         if people[p].mother in done:
             m = people[p].mother
-            begats += (
-                f"<path d='M {done[p]['b'] * w /
-                              widx:.3f},{addPt(p, 'y', -5):.3f} "
-                f"V {addPt(m, 'y', 5):.3f}' "
-                f"class='{'unbegat' if p in unknownb |
+            begats += f"<path d='M {done[p]['b'] * w /
+                              widx:.3f},{addPt(p, 'y', -5):.3f} " f"V {addPt(m, 'y', 5):.3f}' " f"class='{'unbegat' if p in unknownb |
                           unknownd else 'begat'}' id='{m}-{p}'/>"
-            )
             begats += f"<circle cx='{done[p]['b'] * w /
                                      widx:.3f}' cy='{addPt(m, 'y', -5):.3f}' r='3' />"
         if people[p].father in done:
             f = people[p].father
-            begats += (
-                f"<path d='M {done[p]['b'] * w /
-                              widx:.3f},{addPt(p, 'y', 5):.3f} "
-                f"V {addPt(f, 'y', -5):.3f}' "
-                f"class='{'unbegat' if p in unknownb |
+            begats += f"<path d='M {done[p]['b'] * w /
+                              widx:.3f},{addPt(p, 'y', 5):.3f} " f"V {addPt(f, 'y', -5):.3f}' " f"class='{'unbegat' if p in unknownb |
                           unknownd else 'begat'}' id='{f}-{p}'/>"
-            )
             begats += f"<circle cx='{done[p]['b'] * w /
                                      widx:.3f}' cy='{addPt(f, 'y'):.3f}' r='3' />"
         if people[p].mother in done:
@@ -1319,39 +1366,27 @@ def drawLineChart(
         if p in unknownb and p not in unknownd:
             p_class = "unknownb"
             if getState(p, "death"):
-                flags += (
-                    f"<image x='{
-                        (done[p]['d'] + 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' "
-                    f"height='9pt' href='../flags/{
+                flags += f"<image x='{
+                        (done[p]['d'] + 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " f"height='9pt' href='../flags/{
                         getState(p, 'death').lower()}.png'/>"
-                )
         elif p not in unknownb and p in unknownd:
             p_class = "unknownd"
             if getState(p, "birth"):
-                flags += (
-                    f"<image x='{
-                        (done[p]['b'] - 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' "
-                    f"height='9pt' href='../flags/{getState(p, 'birth').lower(
+                flags += f"<image x='{
+                        (done[p]['b'] - 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " f"height='9pt' href='../flags/{getState(p, 'birth').lower(
                     )}.png' style='transform: translateX(-15.72pt)'/>"
-                )
         elif p in unknownb and p in unknownd:
             p_class = "unknownbd"
         else:
             p_class = "known"
             if getState(p, "death"):
-                flags += (
-                    f"<image x='{
-                        (done[p]['d'] + 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' "
-                    f"height='9pt' href='../flags/{
+                flags += f"<image x='{
+                        (done[p]['d'] + 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " f"height='9pt' href='../flags/{
                         getState(p, 'death').lower()}.png'/>"
-                )
             if getState(p, "birth"):
-                flags += (
-                    f"<image x='{
-                        (done[p]['b'] - 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' "
-                    f"height='9pt' href='../flags/{getState(p, 'birth').lower(
+                flags += f"<image x='{
+                        (done[p]['b'] - 1) * w / widx:.3f}' y='{done[p]['y'] - 4.5 * 72 / 96:.3f}' " f"height='9pt' href='../flags/{getState(p, 'birth').lower(
                     )}.png' style='transform: translateX(-15.72pt)'/>"
-                )
         lines += (
             f"<rect x='{done[p]['b'] * w /
                         widx:.3f}' y='{addPt(p, 'y', -5):.3f}' "
@@ -1384,14 +1419,10 @@ def drawLineChart(
                 )}.png' style='transform: translateX(-7.36pt)'/>"
             )
     for p in done:
-        names += (
-            f"<text class='name {
-                'nameunknown' if p in unknownb | unknownd else ''}'>"
-            f"<tspan dx='{pt2px(2):.3f}' dy='{pt2px(1):.3f}' x={
-                done[p]['b'] * w / widx:.3f} y={done[p]['y']:.3f}>"
-            f"{people[p].name.first} {
+        names += f"<text class='name {
+                'nameunknown' if p in unknownb | unknownd else ''}'>" f"<tspan dx='{pt2px(2):.3f}' dy='{pt2px(1):.3f}' x={
+                done[p]['b'] * w / widx:.3f} y={done[p]['y']:.3f}>" f"{people[p].name.first} {
                 people[p].name.last}</tspan></text>"
-        )
     for y in range(math.floor(minx), math.ceil(maxx) + 1):
         if not y % 100:
             years += f"<path d='M {y * w /
@@ -1565,6 +1596,84 @@ def getVisibilityLineTTB(done: dict, bars: dict, positions: dict) -> dict:
     return visibility
 
 
+def getAncestralBlock(
+    node: str, ancestors: Dict[str, Set[str]], max_size: int = 7
+) -> Set[str]:
+    """Get the ancestral block for a node (node + its ancestors up to max_size)"""
+    block = {node}
+    to_process = [node]
+
+    while to_process and len(block) < max_size:
+        current = to_process.pop(0)
+        if current in ancestors:
+            for ancestor in ancestors[current]:
+                if ancestor not in block and len(block) < max_size:
+                    block.add(ancestor)
+                    to_process.append(ancestor)
+
+    return block
+
+
+def moveAncestorsTowardsChildren(
+    positions: Dict[str, float],
+    ancestors: Dict[str, Set[str]],
+    descendants: Dict[str, str],
+    spacing: float,
+) -> bool:
+    """Move ancestors toward their children with collision checking, moving ancestral blocks together"""
+    moved = False
+
+    # Process nodes from bottom to top (children before parents)
+    sorted_nodes = sorted(positions.keys(), key=lambda x: positions[x], reverse=True)
+
+    for node in sorted_nodes:
+        if node not in descendants:  # Skip if node doesn't have a child
+            continue
+
+        child = descendants[node]
+        if child not in positions:
+            continue
+
+        node_pos = positions[node]
+        child_pos = positions[child]
+
+        # Only move if the parent is above the child and they're too far apart
+        if node_pos < child_pos and (child_pos - node_pos) > spacing:
+            # Get the ancestral block for this node (node + its ancestors up to a limit)
+            ancestral_block = getAncestralBlock(node, ancestors, max_size=7)
+
+            # Calculate target position for the node
+            target_pos = child_pos - spacing
+            if target_pos <= node_pos:
+                continue
+
+            # Check for collisions with other nodes
+            collision = False
+            for other_node, other_pos in positions.items():
+                if other_node in ancestral_block or other_node == child:
+                    continue
+                # Check if any node in the block would cross this node
+                for block_node in ancestral_block:
+                    block_pos = positions[block_node]
+                    block_target = block_pos + (target_pos - node_pos)
+                    if (block_pos < other_pos < block_target) or (
+                        block_target < other_pos < block_pos
+                    ):
+                        collision = True
+                        break
+                if collision:
+                    break
+
+            if not collision:
+                # Move the entire ancestral block
+                delta = target_pos - node_pos
+                for block_node in ancestral_block:
+                    positions[block_node] = positions[block_node] + delta
+                moved = True
+
+    return moved
+
+
 def getYBarsLine(
     done: Dict, ancestors: Dict, descendants: Dict, initialPositions: Dict
 ) -> Dict[Tuple[int, int], List[str]]:
@@ -1597,15 +1706,14 @@ def getYBarsLine(
     return bars
 
 
-def positionLine(descentList: list, numGenerations: int, size: float) -> int:
+def positionLine(descentList: list, numGenerations: int) -> int:
     y: int = 0
     if len(descentList) == 1:
         return 0
-    for i, j in enumerate(descentList[::-1][1:]):
+    for _, j in enumerate(descentList[::-1][1:]):
         yy = round(
             (1 if people[j].gender == "F" else -1)
-            * size
-            * 2 ** (numGenerations - people[j].generation)
+            * 2 ** (numGenerations - (people[j].generation or 0))
         )
         y += yy
     return y
@@ -1702,7 +1810,7 @@ def generateZegelchart(p: str) -> List[Dict[str, Union[int, str, None]]]:
     spouses = getSpouse(p)
     for spouse in spouses:
         if spouse:
-            if people[p]["gender"] == "F":
+            if people[p].gender == "F":
                 descent.insert(-2, essentials(spouse))
             else:
                 descent.append(essentials(spouse))

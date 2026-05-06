@@ -1,7 +1,6 @@
-from typing import Dict, List, Set
+from typing import List, Set
 
-from models import Person
+from models import People
 
-
-people: Dict[str, Person] = dict()
+people: People = People()
 generations: List[Set] = list()
