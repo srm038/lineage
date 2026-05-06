@@ -23,7 +23,17 @@
 
 \usepackage{arevmath}
 \usepackage{fontspec}
-\setmainfont{Cormorant}
+% Prefer TeX Gyre Pagella (available in TeX Live). If missing, try
+% Cormorant; otherwise fall back to Latin Modern to avoid xdvipdfmx font errors.
+\IfFontExistsTF{TeX Gyre Pagella}{%
+  \setmainfont{TeX Gyre Pagella}%
+}{%
+  \IfFontExistsTF{Cormorant}{%
+    \setmainfont{Cormorant}%
+  }{%
+    \setmainfont{Latin Modern Roman}%
+  }%
+}
 
 \usepackage{textcomp}
 \usepackage{microtype}
