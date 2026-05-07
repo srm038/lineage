@@ -18,11 +18,7 @@ class Name:
         self.first = first.strip().replace(":", '\\"')
         self.middle = middle.strip().replace(":", '\\"')
         self.last = last.strip().replace(":", '\\"')
-        self.shortname = (
-            shortname
-            if shortname
-            else f"{self.first} {self.last}" if last else self.first
-        )
+        self.shortname = shortname or (self.__str__() if last else self.first)
         self.title = title.strip().replace(":", '\\"')
         self.antonym = antonym.strip().replace(":", '\\"')
         self.nickname = nickname.strip().replace(":", '\\"')

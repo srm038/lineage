@@ -655,7 +655,20 @@ def generateFromShorthand(c: str, p: str = "") -> Person:
     gender, first, last, birth = (c.split("|") + [""] * 4)[:4]
     first = first.capitalize()
     if last:
-        last = last.capitalize() if " " not in last else last
+        if "'" in last:
+            last = last.split("'")
+            last = (
+                ("'".join(last[:-1]) + "'" + last[-1].capitalize())
+                if len(last) > 1
+                else last[0].capitalize()
+            )
+        else:
+            last = last.split(" ")
+            last = (
+                (" ".join(last[:-1]) + " " + last[-1].capitalize())
+                if len(last) > 1
+                else last[0].capitalize()
+            )
     elif p:
         last = people[p].name.last
 
@@ -664,7 +677,6 @@ def generateFromShorthand(c: str, p: str = "") -> Person:
             "id": generateIDn(f"{first.lower()}{last.lower()}"),
             "name": {
                 "first": first,
-                "shortname": joinName(first, last),
             },
             "gender": gender,
         }
@@ -704,8 +716,11 @@ def cousins(p1, p2):
             degree = min(g, h)
             removed = abs(g - h)
             cousins.append({"degree": degree, "removed": removed})
-    degree = lambda d: {0: "th", 1: "first", 2: "second", 3: "third"}.get(d, f"{d}th")
+    degree = lambda d: {0: "th", 1: "1st", 2: "2nd", 3: "3rd"}.get(d, f"{d}th")
     removed = lambda r: {0: "", 1: "once", 2: "twice"}.get(r, f"{r} times") + (
         " removed" if r else ""
     )
-    return [f"{degree(c['degree'])} cousins {removed(c['removed'])}" for c in cousins]
+    return [
+        f"{degree(c['degree'])} cousins {removed(c['removed'])}".strip()
+        for c in cousins
+    ]
