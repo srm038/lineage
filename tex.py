@@ -136,7 +136,7 @@ def getChildrenDetails(person: Person, p0: str) -> str:
 
 
 def getChildDetails(person: Person, c: str, p0: str) -> str:
-    mainLine = getMainLine(person, c)
+    mainLine = getMainLine(person, c, p0)
     title = getTitle(people[c])
     antonym = getAntonym(people[c])
     birth = childBirth(c)
@@ -165,8 +165,8 @@ def childBirth(c: str) -> str:
     return f"born {people[c].birth.date}" if people[c].birth.date else ""
 
 
-def getMainLine(person: Person, c: str) -> str:
-    return "[+]" if c in person.child else ""
+def getMainLine(person: Person, c: str, p0: str) -> str:
+    return "[+]" if inFullTree(c, p0) else ""
 
 
 def getParentDetails(person: Person, s: str) -> str:

@@ -107,13 +107,6 @@
       "mother": {
         "$ref": "#/definitions/nonEmptyString"
       },
-      "child": {
-        "type": "array",
-        "items": {
-          "$ref": "#/definitions/nonEmptyString"
-        },
-        "uniqueItems": true
-      },
       "history": {
         "$ref": "#/definitions/nonEmptyString"
       },

@@ -84,11 +84,6 @@ def importFamily(familyName: str, p0: str):
                 people[p].spouse.remove(s)
                 people[newId].marriage = Marriages({p: people[p].marriage[newId]})
                 people[newId].spouse |= set([p])
-                people[newId].child |= {
-                    c
-                    for c in people[p].child
-                    if c in people[newId].marriage[p].children
-                }
                 for child in people[p].marriage[newId].children:
                     people[child].father, people[child].mother = (
                         (p, newId) if people[p].gender == "M" else (newId, p)
@@ -96,9 +91,6 @@ def importFamily(familyName: str, p0: str):
             if s in people:
                 people[s].spouse |= set([p])
                 people[s].marriage.update({p: people[p].marriage[s]})
-                people[s].child |= {
-                    c for c in people[p].child if c in people[s].marriage[p].children
-                }
     # Clear ancestor cache (used by inFullTree/getAncestors) because `people` mutated
     try:
         getAncestors.cache_clear()

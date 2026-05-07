@@ -14,6 +14,7 @@ from utils import (
     getParent,
     getSpouse,
     getState,
+    getAllChildren,
 )
 
 from config import people, generations
@@ -54,7 +55,7 @@ def generate_genealogy_tree(root, main=False):
     collapsed_tree = tree.copy()
     for g in generations:
         for c in sorted(
-            set.union(*[people[p].child for p in g]),
+            set.union(*(getAllChildren(p) for p in g)) if g else set(),
             key=lambda i: people[i].gender,
             reverse=True,
         ):

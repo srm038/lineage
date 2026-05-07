@@ -84,6 +84,12 @@ class Date:
             return None
         return int(self.edtf.year)  # type: ignore
 
+    def __bool__(self):
+        return bool(self.value)
+
+    def __str__(self):
+        return self.value
+
 
 class Marriages(Dict[Optional[str], Marriage]):
     def __init__(self, *args, **kwargs):
