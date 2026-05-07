@@ -146,9 +146,9 @@ def getAntonym(person: Person) -> str:
     return person.name.antonym
 
 
-def descent(p: str, p0: str) -> list:
+def descent(p: str, p0: str) -> list[list[str]]:
     d = [[p]]
-    found_paths = []
+    found_paths: list[list[str]] = []
 
     while d:
         current_path = d.pop(0)
@@ -675,3 +675,37 @@ def generateFromShorthand(c: str, p: str = "") -> Person:
         newPerson.birth = Vitals(date=birth)
 
     return newPerson
+
+
+def cousins(p1, p2):
+    """
+    Returns cousin relationships (first, second, etc.) between p1 and p2 based on their common ancestors.
+    If there are many pathways between two people, this will return a list of all cousin relationships.
+
+    :param p1: person 1
+    :param p2: person 2
+    :return: a list of cousin relationships (e.g. "first cousin", "second cousin once removed", etc.)
+    """
+    p1Ancestors = getAncestors(p1) | {p1}
+    p2Ancestors = getAncestors(p2) | {p2}
+    commonAncestors = p1Ancestors & p2Ancestors
+    if not commonAncestors:
+        return []
+    dist = {}
+    for c in commonAncestors:
+        d1 = descent(c, p1)
+        d2 = descent(c, p2)
+        dist[c] = {p1: [len(i) - 1 for i in d1], p2: [len(i) - 1 for i in d2]}
+    minAncestor = min(dist, key=lambda c: min(*dist[c][p1], *dist[c][p2]))
+    minGen = min(*dist[minAncestor][p1], *dist[minAncestor][p2])
+    cousins = []
+    for g in dist[minAncestor][p1]:
+        for h in dist[minAncestor][p2]:
+            degree = min(g, h)
+            removed = abs(g - h)
+            cousins.append({"degree": degree, "removed": removed})
+    degree = lambda d: {0: "th", 1: "first", 2: "second", 3: "third"}.get(d, f"{d}th")
+    removed = lambda r: {0: "", 1: "once", 2: "twice"}.get(r, f"{r} times") + (
+        " removed" if r else ""
+    )
+    return [f"{degree(c['degree'])} cousins {removed(c['removed'])}" for c in cousins]
