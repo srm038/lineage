@@ -15,6 +15,7 @@ dependencies = [
     "comm==0.2.3",
     "debugpy==1.8.16",
     "decorator==5.2.1",
+    "edtf>=5.0.1",
     "executing==2.2.0",
     "idna==3.10",
     "ipykernel==6.30.1",

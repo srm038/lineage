@@ -1,5 +1,8 @@
 from typing import Dict, List, Literal, Optional, Set
 
+from edtf import EDTFObject, parse_edtf, text_to_edtf
+from pyparsing import ParseResults
+
 
 class Name:
     def __init__(
@@ -35,7 +38,7 @@ class Name:
 
 class Vitals:
     def __init__(self, date: str | int | None = None, place: str | None = None):
-        self.date = date
+        self.date = Date(date)
         self.place = place
 
     def set(self, **kwargs):
@@ -44,11 +47,7 @@ class Vitals:
                 setattr(self, key, value)
 
     def getYear(self):
-        if not self.date:
-            return None
-        if isinstance(self.date, int):
-            return self.date
-        return int(self.date.split(" ")[-1])
+        return self.date.getYear()
 
 
 Children = Set[str]
@@ -61,7 +60,7 @@ class Marriage:
         place: str | None = None,
         children: Children = set(),
     ):
-        self.date = date
+        self.date = Date(date)
         self.place = place
         self.children = set(children)
 
@@ -71,11 +70,19 @@ class Marriage:
                 setattr(self, key, value)
 
     def getYear(self):
-        if not self.date:
+        return self.date.getYear()
+
+
+class Date:
+    def __init__(self, value: Optional[str | int]):
+        self.value = str(value) if value is not None else None
+        edtf = text_to_edtf(self.value) if self.value else None
+        self.edtf = parse_edtf(edtf) if edtf else None
+
+    def getYear(self) -> Optional[int]:
+        if not self.edtf:
             return None
-        if isinstance(self.date, int):
-            return self.date
-        return int(self.date.split(" ")[-1])
+        return int(self.edtf.year)  # type: ignore
 
 
 class Marriages(Dict[Optional[str], Marriage]):
@@ -93,7 +100,7 @@ class Buried:
     def __init__(
         self, date: str = "", place: str = "", cemetery: str = "", plusCode: str = ""
     ):
-        self.date = date
+        self.date = Date(date)
         self.place = place
         self.cemetery = cemetery
         self.plusCode = plusCode
