@@ -10,7 +10,7 @@ import pluscodes
 from requests_cache import Optional
 
 from config import people, generations
-from models import Marriage, Marriages, Person, Vitals
+from models import Cousin, Marriage, Marriages, Person, Vitals
 
 
 def isDateFull(d: Union[str, int]) -> bool:
@@ -689,7 +689,7 @@ def generateFromShorthand(c: str, p: str = "") -> Person:
     return newPerson
 
 
-def cousins(p1, p2):
+def cousins(p1, p2) -> list[Cousin]:
     """
     Returns cousin relationships (first, second, etc.) between p1 and p2 based on their common ancestors.
     If there are many pathways between two people, this will return a list of all cousin relationships.
@@ -709,18 +709,10 @@ def cousins(p1, p2):
         d2 = descent(c, p2)
         dist[c] = {p1: [len(i) - 1 for i in d1], p2: [len(i) - 1 for i in d2]}
     minAncestor = min(dist, key=lambda c: min(*dist[c][p1], *dist[c][p2]))
-    minGen = min(*dist[minAncestor][p1], *dist[minAncestor][p2])
-    cousins = []
+    cousins: list[Cousin] = []
     for g in dist[minAncestor][p1]:
         for h in dist[minAncestor][p2]:
             degree = min(g, h)
             removed = abs(g - h)
-            cousins.append({"degree": degree, "removed": removed})
-    degree = lambda d: {0: "th", 1: "1st", 2: "2nd", 3: "3rd"}.get(d, f"{d}th")
-    removed = lambda r: {0: "", 1: "once", 2: "twice"}.get(r, f"{r} times") + (
-        " removed" if r else ""
-    )
-    return [
-        f"{degree(c['degree'])} cousins {removed(c['removed'])}".strip()
-        for c in cousins
-    ]
+            cousins.append(Cousin(degree, removed))
+    return cousins

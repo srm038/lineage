@@ -202,3 +202,16 @@ class People(Dict[Optional[str], Person]):
         if key in self:
             return super().__getitem__(key)
         return Person(id="null", name=Name(first="", last=""), gender="M")
+
+
+class Cousin:
+    def __init__(self, degree: int, removed: int):
+        self.degree = degree
+        self.removed = removed
+
+    def __str__(self):
+        degree = lambda d: {0: "th", 1: "1st", 2: "2nd", 3: "3rd"}.get(d, f"{d}th")
+        removed = lambda r: {0: "", 1: "once", 2: "twice"}.get(r, f"{r} times") + (
+            " removed" if r else ""
+        )
+        return f"{degree(self.degree)} cousins {removed(self.removed)}".strip()
