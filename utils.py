@@ -653,7 +653,8 @@ def generateFromShorthand(c: str, p: str = "") -> Person:
     :return: the person
     """
     gender, first, last, birth = (c.split("|") + [""] * 4)[:4]
-    first = first.capitalize()
+    if not first.startswith("\\AE"):
+        first = first.capitalize()
     if last:
         if "'" in last:
             last = last.split("'")
@@ -675,14 +676,10 @@ def generateFromShorthand(c: str, p: str = "") -> Person:
     newPerson = Person(
         **{
             "id": generateIDn(f"{first.lower()}{last.lower()}"),
-            "name": {
-                "first": first,
-            },
+            "name": {"first": first, "last": last},
             "gender": gender,
         }
     )
-    if last:
-        newPerson.name.last = last
     if birth:
         newPerson.birth = Vitals(date=birth)
 

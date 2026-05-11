@@ -1,7 +1,11 @@
 from typing import Dict, List, Literal, Optional, Set
 
-from edtf import EDTFObject, parse_edtf, text_to_edtf
-from pyparsing import ParseResults
+from edtf import parse_edtf, text_to_edtf
+import unicodeit
+
+
+def sanitize(value: str) -> str:
+    return unicodeit.replace(value.strip()).replace("$", "\\$")
 
 
 class Name:
@@ -15,27 +19,33 @@ class Name:
         antonym: str = "",
         nickname: str = "",
     ):
-        self.first = first.strip().replace(":", '\\"')
-        self.middle = middle.strip().replace(":", '\\"')
-        self.last = last.strip().replace(":", '\\"')
+        self.first = sanitize(first) if first != "---" else first
+        self.middle = sanitize(middle)
+        self.last = sanitize(last)
         self.shortname = shortname or (self.__str__() if last else self.first)
-        self.title = title.strip().replace(":", '\\"')
-        self.antonym = antonym.strip().replace(":", '\\"')
-        self.nickname = nickname.strip().replace(":", '\\"')
+        self.title = sanitize(title)
+        self.antonym = sanitize(antonym)
+        self.nickname = sanitize(nickname)
 
     def __str__(self):
-        return f"{self.first} {self.last}"
+        return f"{self.first} {self.last}".strip()
 
     def set(self, **kwargs):
         for key, value in kwargs.items():
             if hasattr(self, key):
                 setattr(self, key, value)
 
+    def unicode(self):
+        return {
+            "first": unicodeit.replace(self.first),
+            "last": unicodeit.replace(self.last),
+        }
+
 
 class Vitals:
     def __init__(self, date: str | int | None = None, place: str | None = None):
         self.date = Date(date)
-        self.place = place
+        self.place = sanitize(place) if place else None
 
     def set(self, **kwargs):
         for key, value in kwargs.items():
@@ -55,10 +65,12 @@ class Marriage:
         date: str | int | None = None,
         place: str | None = None,
         children: Children = set(),
+        adulterous: bool = False,
     ):
         self.date = Date(date)
-        self.place = place
+        self.place = sanitize(place) if place else None
         self.children = set(children)
+        self.adulterous = adulterous
 
     def set(self, **kwargs):
         for key, value in kwargs.items():
@@ -103,8 +115,8 @@ class Buried:
         self, date: str = "", place: str = "", cemetery: str = "", plusCode: str = ""
     ):
         self.date = Date(date)
-        self.place = place
-        self.cemetery = cemetery
+        self.place = sanitize(place) if place else None
+        self.cemetery = sanitize(cemetery) if cemetery else None
         self.plusCode = plusCode
 
     def set(self, **kwargs):
@@ -157,7 +169,7 @@ class Person:
         self.mother = mother
         self.generation = generation
         self.note = note
-        self.history = history
+        self.history = sanitize(history)
         self.sources = sources if isinstance(sources, dict) else (sources or {})
         self.tree = tree
         self.army = army

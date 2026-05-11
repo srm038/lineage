@@ -219,6 +219,7 @@ dependencies = [
     { name = "tornado" },
     { name = "traitlets" },
     { name = "typing-extensions" },
+    { name = "unicodeit" },
     { name = "url-normalize" },
     { name = "urllib3" },
     { name = "wcwidth" },
@@ -267,6 +268,7 @@ requires-dist = [
     { name = "tornado", specifier = "==6.5.2" },
     { name = "traitlets", specifier = "==5.14.3" },
     { name = "typing-extensions", specifier = "==4.14.1" },
+    { name = "unicodeit", specifier = ">=0.7.5" },
     { name = "url-normalize", specifier = "==2.2.1" },
     { name = "urllib3", specifier = "==2.5.0" },
     { name = "wcwidth", specifier = "==0.2.13" },
@@ -717,6 +719,12 @@ sdist = { url = "https://files.pythonhosted.org/packages/98/5a/da40306b885cc8c09
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b5/00/d631e67a838026495268c2f6884f3711a15a9a2a96cd244fdaea53b823fb/typing_extensions-4.14.1-py3-none-any.whl", hash = "sha256:d1e1e3b58374dc93031d6eda2420a48ea44a36c2b4766a4fdeb3710755731d76", size = 43906, upload-time = "2025-07-04T13:28:32.743Z" },
 ]
+
+[[package]]
+name = "unicodeit"
+version = "0.7.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ca/59/87694efec0dd8d789776b54a4b928b85d3886ff43ece762b67faa4fbdde5/unicodeit-0.7.5.tar.gz", hash = "sha256:f100df7a1b8c64d7b5160859426b641cd9f30218173c5a3450842370e242a168", size = 40956, upload-time = "2023-03-12T09:23:51.151Z" }
 
 [[package]]
 name = "url-normalize"
