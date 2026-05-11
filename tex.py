@@ -183,7 +183,7 @@ def generateSpouse(person: Person, p0: str):
         spouse = [spouse]
     spouseDetail = []
     sortedSpouses = sorted(
-        filter(lambda s: s != "", spouse),
+        filter(lambda s: s != "" and not person.marriage[s].adulterous, spouse),
         key=lambda x: person.marriage[x].getYear() or 3000,
     )
     for s in sortedSpouses:
@@ -213,7 +213,7 @@ def generateSpouseMarriageHistory(person: Person, s: str) -> str:
     spouse = people[s]
     spouseDetail = []
     sortedSpouses = sorted(
-        filter(lambda s: s != "", spouse.spouse),
+        filter(lambda s: s != "" and not person.marriage[s].adulterous, spouse.spouse),
         key=lambda x: spouse.marriage[x].getYear() or 3000,
     )
     if len(sortedSpouses) <= 1:
