@@ -655,6 +655,13 @@ def generateFromShorthand(c: str, p: str = "") -> Person:
     gender, first, last, birth = (c.split("|") + [""] * 4)[:4]
     if not first.startswith("\\AE"):
         first = first.capitalize()
+    if isRoman(first.split(" ")[-1]):
+        first = first.split(" ")
+        first = (
+            " ".join([f.capitalize() for f in first[:-1]])
+            + " "
+            + first[-1].strip().upper()
+        )
     if last:
         if "'" in last:
             last = last.split("'")
@@ -713,3 +720,8 @@ def cousins(p1, p2) -> list[Cousin]:
             removed = abs(g - h)
             cousins.append(Cousin(degree, removed))
     return cousins
+
+
+def isRoman(s: str) -> bool:
+    romanNumerals = set("IVXLCDM")
+    return all(c in romanNumerals for c in s.upper())
