@@ -1,8 +1,8 @@
 import os
-from typing import Dict, Literal, Set, Union
+from typing import Dict, Literal, Optional, Set, Union
 import warnings
 
-from models import Marriage, Person, Vitals
+from models import Date, Marriage, Person, Vitals
 from utils import (
     getAntonym,
     getFullName,
@@ -51,8 +51,8 @@ def printIndividualEntry(p: str, p0: str) -> str:
     title = getTitle(person)
     antonym = getAntonym(person)
     patriline = printLineage(p, "father")
-    birth = combineDatePlace(person, "birth")
-    death = combineDatePlace(person, "death")
+    birth = str(person.birth)
+    death = str(person.death)
     vitals = combineVitals(birth, death)
     accolades = getAccolades(person)
     spouseDetails = generateSpouse(person, p0)
@@ -97,7 +97,7 @@ def getSources(person: Person) -> str:
     for s in person.spouse:
         if not s:
             continue
-        allSources.update(people.get(s, Person).sources)
+        allSources.update(people[s].sources)
     sources = [f"\\item\\fullcite[{allSources[s]}]{{{s}}}" for s in sorted(allSources)]
     return buildSentence("\\begin{source}", *sources, "\\end{source}")
 
@@ -139,7 +139,7 @@ def getChildDetails(person: Person, c: str, p0: str) -> str:
     mainLine = getMainLine(person, c, p0)
     title = getTitle(people[c])
     antonym = getAntonym(people[c])
-    birth = childBirth(c)
+    birth = people[c].birth.date.preposition()
     marriage = childMarriage(c, mainLine, p0)
     return (
         f"\\childlist{mainLine}{{{c if mainLine else ''}}}"
@@ -156,13 +156,13 @@ def childMarriage(c: str, mainLine: str, p0: str) -> str:
     if type(spouses) == str:
         spouses = [spouses]
     for cs in spouses:
-        if not people.get(cs, Person).generation:
+        if not people[cs].generation:
             continue
         return f"{people[c].getPronoun()} married {getShortNamelink(cs, p0)}"
 
 
-def childBirth(c: str) -> str:
-    return f"born {people[c].birth.date}" if people[c].birth.date else ""
+def childBirth(c: str) -> Optional[str]:
+    return f"born {people[c].birth.date}" if people[c].birth.date else None
 
 
 def getMainLine(person: Person, c: str, p0: str) -> str:
@@ -191,9 +191,9 @@ def generateSpouse(person: Person, p0: str):
             continue
         spouseName = getSpouseName(s, p0)
         nSpouse = getSpouseNumber(s, sortedSpouses)
-        marriage = combineMarriageDatePlace(person, s)
-        birth = combineDatePlace(people[s], "birth")
-        death = combineDatePlace(people[s], "death")
+        marriage = str(person.marriage.get(s, Marriage()))
+        birth = str(people[s].birth)
+        death = str(people[s].death)
         vitals = combineVitals(birth, death, parents=getSpouseParents(s, p0))
         history = people[s].history
         spouseMarriageHistory = generateSpouseMarriageHistory(person, s)

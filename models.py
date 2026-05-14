@@ -1,11 +1,34 @@
 from typing import Dict, List, Literal, Optional, Set
-
-from edtf import parse_edtf, text_to_edtf
+from edtf import (
+    EDTFObject,
+    Interval,
+    parse_edtf,
+    parser,
+    text_to_edtf,
+    Date as EDTFDate,
+)
+from time import strftime
 import unicodeit
 
 
+@property
+def getPrecision(self) -> str | None:
+    date = getattr(self, "date", None)
+    return getattr(date, "precision", None)
+
+
+for dateType in [
+    "UncertainOrApproximate",
+    "PartialUncertainOrApproximate",
+    "PartialUnspecified",
+]:
+    cls = getattr(parser.parser_classes, dateType, None)
+    if cls and not hasattr(cls, "precision"):
+        setattr(cls, "precision", getPrecision)
+
+
 def sanitize(value: str) -> str:
-    return unicodeit.replace(value.strip()).replace("$", "\\$")
+    return unicodeit.replace(value.strip()).replace("$", "\\$").replace("\u2212", "-")
 
 
 class Name:
@@ -43,7 +66,7 @@ class Name:
 
 
 class Vitals:
-    def __init__(self, date: str | int | None = None, place: str | None = None):
+    def __init__(self, date: Optional[str] = None, place: Optional[str] = None):
         self.date = Date(date)
         self.place = sanitize(place) if place else None
 
@@ -55,6 +78,11 @@ class Vitals:
     def getYear(self):
         return self.date.getYear()
 
+    def __str__(self):
+        date = self.date.preposition() if self.date else ""
+        place = f"in {self.place}" if self.place else ""
+        return ", ".join(filter(None, [date, place]))
+
 
 Children = Set[str]
 
@@ -62,8 +90,8 @@ Children = Set[str]
 class Marriage:
     def __init__(
         self,
-        date: str | int | None = None,
-        place: str | None = None,
+        date: Optional[str] = None,
+        place: Optional[str] = None,
         children: Children = set(),
         adulterous: bool = False,
     ):
@@ -80,12 +108,16 @@ class Marriage:
     def getYear(self):
         return self.date.getYear()
 
+    def __str__(self):
+        date = self.date.preposition() if self.date else ""
+        place = f"in {self.place}" if self.place else ""
+        return ", ".join(filter(None, [date, place]))
+
 
 class Date:
-    def __init__(self, value: Optional[str | int]):
-        self.value = str(value) if value is not None else None
-        edtf = text_to_edtf(self.value) if self.value else None
-        self.edtf = parse_edtf(edtf) if edtf else None
+    def __init__(self, value: Optional[str]):
+        self.raw = str(value) if value is not None else None
+        self.edtf: Optional[EDTFObject] = parse_edtf(self.raw) if self.raw else None  # type: ignore
 
     def getYear(self) -> Optional[int]:
         if not self.edtf:
@@ -93,10 +125,36 @@ class Date:
         return int(self.edtf.year)  # type: ignore
 
     def __bool__(self):
-        return bool(self.value)
+        return bool(self.edtf)
 
-    def __str__(self):
-        return self.value
+    def preposition(self) -> str:
+        if not self.edtf:
+            return ""
+        if isinstance(self.edtf, EDTFDate):
+            precision = self.edtf.precision
+            preposition = "on" if precision == "day" else "in"
+            return f"{preposition} {formatPrecision(self.edtf)}"
+        if isinstance(self.edtf, Interval):
+            if str(self.edtf.lower) not in ["", ".."] and str(self.edtf.upper) not in [
+                "",
+                "..",
+            ]:
+                return f"between {formatPrecision(self.edtf.lower)} and {formatPrecision(self.edtf.upper)}"
+            if str(self.edtf.lower) not in ["", ".."]:
+                return f"after {formatPrecision(self.edtf.lower)}"
+            if str(self.edtf.upper) not in ["", ".."]:
+                return f"before {formatPrecision(self.edtf.upper)}"
+        return self.raw or ""
+
+
+def formatPrecision(edtf: EDTFDate) -> str:
+    precision = edtf.precision
+    if precision == "day":
+        return strftime("%B %d, %4Y", edtf._strict_date())
+    if precision == "month":
+        return strftime("%B of %4Y", edtf._strict_date())
+    else:
+        return strftime("%4Y", edtf._strict_date())
 
 
 class Marriages(Dict[Optional[str], Marriage]):
@@ -112,7 +170,11 @@ class Marriages(Dict[Optional[str], Marriage]):
 
 class Buried:
     def __init__(
-        self, date: str = "", place: str = "", cemetery: str = "", plusCode: str = ""
+        self,
+        date: Optional[str] = None,
+        place: Optional[str] = None,
+        cemetery: Optional[str] = None,
+        plusCode: Optional[str] = None,
     ):
         self.date = Date(date)
         self.place = sanitize(place) if place else None
@@ -170,7 +232,7 @@ class Person:
         self.generation = generation
         self.note = note
         self.history = sanitize(history)
-        self.sources = sources if isinstance(sources, dict) else (sources or {})
+        self.sources = sources if sources and isinstance(sources, dict) else {}
         self.tree = tree
         self.army = army
         self.kia = kia

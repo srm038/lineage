@@ -636,18 +636,10 @@ def joinName(*name) -> str:
     return joinedName
 
 
-def parseDate(date: Union[str, int]) -> Union[str, int]:
-    if type(date) == int:
-        return date
-    date = date.split(" ")
-    if len(date) > 1:
-        return joinName(*date)
-    return int(date[0])
-
-
 def generateFromShorthand(c: str, p: str = "") -> Person:
     """
     Generate a person from a shorthand
+
     :param c: the shorthand
     :param p: the parent
     :return: the person
