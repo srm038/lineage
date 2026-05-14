@@ -6,6 +6,7 @@ import warnings
 from functools import lru_cache
 from collections import deque
 
+import dateutil
 import pluscodes
 from requests_cache import Optional
 
@@ -13,14 +14,16 @@ from config import people, generations
 from models import Cousin, Marriage, Marriages, Person, Vitals
 
 
-def isDateFull(d: Union[str, int]) -> bool:
+def isDateFull(d: str | int) -> bool:
     """
     Check if a date is full (meaning, it has a day, month, and year)
     :param d: the date to check
     :return: True if the date is full, False otherwise
     """
-    d = str(d).split(" ")
-    return len(d) == 3
+    if isinstance(d, int):
+        return False
+    date: list[str] = str(d).split(" ")
+    return len(date) == 3
 
 
 def loadRawData(familyName: str) -> Dict:
@@ -717,3 +720,12 @@ def cousins(p1, p2) -> list[Cousin]:
 def isRoman(s: str) -> bool:
     romanNumerals = set("IVXLCDM")
     return all(c in romanNumerals for c in s.upper())
+
+
+def parseDate(d: str | int) -> str:
+    if isinstance(d, int):
+        return f"{d:04}-XX"
+    d = d.strip()
+    if isDateFull(d):
+        return dateutil.parser.parse(d).strftime("%4Y-%m-%d")
+    return dateutil.parser.parse(d).strftime("%4Y-%m-XX")

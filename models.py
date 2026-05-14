@@ -2,6 +2,10 @@ from typing import Dict, List, Literal, Optional, Set
 from edtf import (
     EDTFObject,
     Interval,
+    Level1Interval,
+    Level2Interval,
+    UncertainOrApproximate,
+    UnspecifiedIntervalSection,
     parse_edtf,
     parser,
     text_to_edtf,
@@ -122,7 +126,20 @@ class Date:
     def getYear(self) -> Optional[int]:
         if not self.edtf:
             return None
-        return int(self.edtf.year)  # type: ignore
+        if isinstance(self.edtf, EDTFDate | UncertainOrApproximate):
+            return int(self.edtf._strict_date().tm_year)  # type: ignore
+        if isinstance(self.edtf, Interval | Level1Interval | Level2Interval):
+            if isinstance(self.edtf.lower, UnspecifiedIntervalSection) and isinstance(
+                self.edtf.upper, UnspecifiedIntervalSection
+            ):
+                lower_year = self.edtf.lower._strict_date().tm_year  # type: ignore
+                upper_year = self.edtf.upper._strict_date().tm_year  # type: ignore
+                return int((lower_year + upper_year) / 2)
+            if isinstance(self.edtf.lower, UnspecifiedIntervalSection):
+                return int(self.edtf.lower._strict_date().tm_year)  # type: ignore
+            if isinstance(self.edtf.upper, UnspecifiedIntervalSection):
+                return int(self.edtf.upper._strict_date().tm_year)  # type: ignore
+        return None
 
     def __bool__(self):
         return bool(self.edtf)
@@ -130,31 +147,53 @@ class Date:
     def preposition(self) -> str:
         if not self.edtf:
             return ""
-        if isinstance(self.edtf, EDTFDate):
-            precision = self.edtf.precision
+        if isinstance(self.edtf, EDTFDate | UncertainOrApproximate):
+            precision = self.edtf.precision  # type: ignore
             preposition = "on" if precision == "day" else "in"
-            return f"{preposition} {formatPrecision(self.edtf)}"
+            f = formatPrecision if isinstance(self.edtf, EDTFDate) else formatUncertain
+            return f"{preposition} {f(self.edtf)}"  # type: ignore
         if isinstance(self.edtf, Interval):
-            if str(self.edtf.lower) not in ["", ".."] and str(self.edtf.upper) not in [
-                "",
-                "..",
-            ]:
-                return f"between {formatPrecision(self.edtf.lower)} and {formatPrecision(self.edtf.upper)}"
-            if str(self.edtf.lower) not in ["", ".."]:
-                return f"after {formatPrecision(self.edtf.lower)}"
-            if str(self.edtf.upper) not in ["", ".."]:
-                return f"before {formatPrecision(self.edtf.upper)}"
+            f = formatPrecision if isinstance(self.edtf, EDTFDate) else formatUncertain
+            return f"between {f(self.edtf.lower)} and {f(self.edtf.upper)}"  # type: ignore
+        if isinstance(self.edtf, Level1Interval | Level2Interval):
+            fl = (
+                formatPrecision
+                if isinstance(self.edtf.lower, EDTFDate)
+                else formatUncertain
+            )
+            fu = (
+                formatPrecision
+                if isinstance(self.edtf.upper, EDTFDate)
+                else formatUncertain
+            )
+            if isinstance(self.edtf.lower, UnspecifiedIntervalSection) and isinstance(
+                self.edtf.upper, UnspecifiedIntervalSection
+            ):
+                return f"between {fl(self.edtf.lower)} and {fu(self.edtf.upper)}"  # type: ignore
+            if isinstance(self.edtf.lower, UnspecifiedIntervalSection):
+                return f"after {fl(self.edtf.lower)}"  # type: ignore
+            if isinstance(self.edtf.upper, UnspecifiedIntervalSection):
+                return f"before {fu(self.edtf.upper)}"  # type: ignore
         return self.raw or ""
 
 
-def formatPrecision(edtf: EDTFDate) -> str:
-    precision = edtf.precision
+def formatPrecision(edtf: EDTFDate | UncertainOrApproximate) -> str:
+    precision = edtf.precision  # type: ignore
     if precision == "day":
-        return strftime("%B %d, %4Y", edtf._strict_date())
+        return strftime("%B %-d, %Y", edtf._strict_date())
     if precision == "month":
-        return strftime("%B of %4Y", edtf._strict_date())
+        return strftime("%B of %Y", edtf._strict_date())
     else:
-        return strftime("%4Y", edtf._strict_date())
+        return strftime("%Y", edtf._strict_date())
+
+
+def formatUncertain(edtf: UncertainOrApproximate) -> str:
+    p = []
+    if edtf.is_uncertain:
+        p.append("approx.")
+    if edtf.is_approximate:
+        p.append("c.")
+    return (" ".join(p) + " " + formatPrecision(edtf)).strip()
 
 
 class Marriages(Dict[Optional[str], Marriage]):

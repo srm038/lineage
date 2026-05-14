@@ -174,11 +174,7 @@
       "oneOf": [
         {
           "type": "string",
-          "pattern": "[0-9/~%]+"
-        },
-        {
-          "type": "number",
-          "minimum": 800
+          "pattern": "^[0-9/~%\\?\\-X]+$"
         }
       ]
     },
