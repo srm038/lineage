@@ -8,7 +8,6 @@ from edtf import (
     UnspecifiedIntervalSection,
     parse_edtf,
     parser,
-    text_to_edtf,
     Date as EDTFDate,
 )
 from time import strftime

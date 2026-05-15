@@ -8,7 +8,7 @@ from collections import deque
 
 import dateutil
 import pluscodes
-from requests_cache import Optional
+import unicodeit
 
 from config import people, generations
 from models import Cousin, Marriage, Marriages, Person, Vitals
@@ -648,6 +648,8 @@ def generateFromShorthand(c: str, p: str = "") -> Person:
     :return: the person
     """
     gender, first, last, birth = (c.split("|") + [""] * 4)[:4]
+    first = unicodeit.replace(first)
+    last = unicodeit.replace(last)
     if not first.startswith("\\AE"):
         first = first.capitalize()
     if isRoman(first.split(" ")[-1]):
