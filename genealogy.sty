@@ -5,7 +5,7 @@
 
 \usepackage[utf8]{inputenc}
 
-\usepackage[margin = 1in]{geometry}
+\usepackage[margin = 1in, headheight = 15pt]{geometry}
 
 \usepackage{graphicx} % support the \includegraphics command and options
 \graphicspath{{assets/}{../assets/}{data/arms/}{../data/arms/}}
@@ -23,17 +23,7 @@
 
 \usepackage{arevmath}
 \usepackage{fontspec}
-% Prefer TeX Gyre Pagella (available in TeX Live). If missing, try
-% Cormorant; otherwise fall back to Latin Modern to avoid xdvipdfmx font errors.
-\IfFontExistsTF{TeX Gyre Pagella}{%
-  \setmainfont{TeX Gyre Pagella}%
-}{%
-  \IfFontExistsTF{Cormorant}{%
-    \setmainfont{Cormorant}%
-  }{%
-    \setmainfont{Latin Modern Roman}%
-  }%
-}
+\setmainfont{TeX Gyre Pagella}
 
 \usepackage{textcomp}
 \usepackage{microtype}
@@ -56,7 +46,7 @@
   box={no shadow, opacityframe=0, colback=black!1, size=small, halign=center,valign=center},
   edges={foreground=black, no background, anchoring=center},
   p/.style={box={opacityframe=1}},
-  usa/.style={box={interior style={fill stretch image=usa.png, fill image opacity=0.15}}}
+  usa/.style={box={interior style={fill stretch image=usa.png, fill image opacity=0.15}}},
   wales/.style={box={interior style={fill stretch image=wales.png, fill image opacity=0.15}}},
   england/.style={box={interior style={fill stretch image=england.png, fill image opacity=0.15}}},
   scotland/.style={box={interior style={fill stretch image=scotland.png, fill image opacity=0.15}}},
@@ -164,6 +154,4 @@
 \newlist{source}{itemize}{1}
 \setlist[source]{label=\textbullet, align = left, left= \parindent .. 2\parindent}
 
-\usepackage{imakeidx}
-\indexsetup{othercode=\small}
-\makeindex[program=makeindex,columns=3,options={-s index_style.ist}]
+
