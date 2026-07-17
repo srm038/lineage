@@ -1,3 +1,4 @@
+import re
 from typing import Dict, List, Literal, Optional, Set
 from edtf import (
     EDTFObject,
@@ -31,7 +32,8 @@ for dateType in [
 
 
 def sanitize(value: str) -> str:
-    return unicodeit.replace(value.strip()).replace("$", "\\$").replace("\u2212", "-")
+    result = re.sub(r"(?<!\\)([#&$])", r"\\\1", unicodeit.replace(value.strip()))
+    return result.replace("\u2212", "-")
 
 
 class Name:
