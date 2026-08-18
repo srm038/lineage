@@ -284,7 +284,9 @@ def buildParagraphs(*paragraphs: iter) -> str:
 
 def buildParagraph(*sentences: iter) -> str:
     paragraph = ". ".join(filter(None, sentences))
-    return paragraph + ("." if not paragraph.endswith("quote}") else "")
+    if paragraph and not paragraph.endswith(("quote}", ".")):
+        paragraph += "."
+    return paragraph
 
 
 def buildSentence(*phrases: iter) -> str:
